@@ -85,7 +85,7 @@ namespace MG.GIF
                 }
                 else if( code > CodeTable.Count )
                 {
-                    if( lastCode >= 0 )
+                    if( lastCode >= 0 && CodeTable.ContainsKey( lastCode ) )
                     {
                         foreach( var v in CodeTable[ lastCode ] )
                         {
@@ -111,7 +111,7 @@ namespace MG.GIF
                     break;
                 }
 
-                if( lastCode >= 0 )
+                if( lastCode >= 0 && CodeTable.ContainsKey( lastCode ) )
                 {
                     var entry = new List<byte>( CodeTable[ lastCode ] );
                     entry.Add( CodeTable[code][0] );

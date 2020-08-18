@@ -50,7 +50,7 @@ namespace MG.GIF
             public byte[]   Data;
 
             public List<Color> ColourTable;
-            public byte[] RawImage;
+            public Color[] RawImage;
         }
 
         public struct Control
@@ -281,9 +281,38 @@ namespace MG.GIF
 
             img.LzwMinimumCodeSize = r.ReadByte();
 
+            // TODO: decode!
+
+            if( img.Interlaced )
+            {
+                Debug.LogWarning( "image is interlaced!" );
+            }
+
             img.Data = ReadImageBlocks( r );
 
-            //img.RawImage = new DecompressLZW().Decompress( img );
+            var raw = new DecompressLZW().Decompress( img );
+
+            img.RawImage = new Color[ img.Width * img.Height ];
+
+            if( img.ColourTable != null )
+            {
+                for( int i = 0; i < raw.Length; i++ )
+                {
+                    img.RawImage[i] = img.ColourTable[raw[i]];
+                }
+            }
+            else if( ColourTable != null )
+            {
+                for( int i = 0; i < raw.Length; i++ )
+                {
+                    img.RawImage[i] = ColourTable[raw[i]];
+                }
+            }
+            else
+            {
+                Debug.LogError( "No colour table" );
+            }
+
 
             if( Images == null )
             {

@@ -79,8 +79,6 @@ namespace Tests
 
         private void ValidatePixels( int frameIndex, string referenceFile, GifData data )
         {
-            Debug.LogWarning( $"ValidatePixels for frame {frameIndex} with {referenceFile}" );
-
             // read reference file
 
             var bytes = File.ReadAllBytes( $"{Dir}\\{referenceFile}" );
@@ -102,6 +100,13 @@ namespace Tests
             // validate
 
             Assert.AreEqual( colours.Length, data.Width * data.Height );
+
+            var frame = data.Images[frameIndex];
+
+            for( var i=0; i < colours.Length; i++ )
+            {
+                Assert.AreEqual( colours[i], frame.RawImage[i] );
+            }
         }
 
         //--------------------------------------------------------------------------------
@@ -263,40 +268,86 @@ namespace Tests
             config.Apply( format );
         }
 
-        //--------------------------------------------------------------------------------
-
-        [Test]
-        public void TestOne()
-        {
-            //TestGif( "animation-multi-image-explicit-zero-delay" );
-            TestGif( "255-codes" );
-        }
-
-        //--------------------------------------------------------------------------------
-
-        private List<string> mSkip = new List<string>()
-        {
-            //"animation-multi-image-explicit-zero-delay"
-        };
-
-        [Test]
-        public void TestAll()
-        {
-            var d = new DirectoryInfo( DirData );
-
-            foreach( var file in d.GetFiles( "*.conf" ) )
-            {
-                var filename = Path.GetFileNameWithoutExtension( file.Name );
-
-                if( mSkip.Contains( filename ) )
-                {
-                    Debug.LogWarning( $"Skip '{filename}'" );
-                    continue;
-                }
-
-                Debug.Log( filename );
-                TestGif( filename );
-            }
-        }
+        [Test] public void Test_255_codes() { TestGif( "255-codes" ); }
+        [Test] public void Test_4095_codes_clear() { TestGif( "4095-codes-clear" ); }
+        [Test] public void Test_4095_codes() { TestGif( "4095-codes" ); }
+        [Test] public void Test_all_blues() { TestGif( "all-blues" ); }
+        [Test] public void Test_all_greens() { TestGif( "all-greens" ); }
+        [Test] public void Test_all_reds() { TestGif( "all-reds" ); }
+        [Test] public void Test_animation_multi_image_explicit_zero_delay() { TestGif( "animation-multi-image-explicit-zero-delay" ); }
+        [Test] public void Test_animation_multi_image() { TestGif( "animation-multi-image" ); }
+        [Test] public void Test_animation_no_delays() { TestGif( "animation-no-delays" ); }
+        [Test] public void Test_animation_speed() { TestGif( "animation-speed" ); }
+        [Test] public void Test_animation_zero_delays() { TestGif( "animation-zero-delays" ); }
+        [Test] public void Test_animation() { TestGif( "animation" ); }
+        [Test] public void Test_comment() { TestGif( "comment" ); }
+        [Test] public void Test_depth1() { TestGif( "depth1" ); }
+        [Test] public void Test_depth2() { TestGif( "depth2" ); }
+        [Test] public void Test_depth3() { TestGif( "depth3" ); }
+        [Test] public void Test_depth4() { TestGif( "depth4" ); }
+        [Test] public void Test_depth5() { TestGif( "depth5" ); }
+        [Test] public void Test_depth6() { TestGif( "depth6" ); }
+        [Test] public void Test_depth7() { TestGif( "depth7" ); }
+        [Test] public void Test_depth8() { TestGif( "depth8" ); }
+        [Test] public void Test_disabled_transparent() { TestGif( "disabled-transparent" ); }
+        [Test] public void Test_dispose_keep() { TestGif( "dispose-keep" ); }
+        [Test] public void Test_dispose_none() { TestGif( "dispose-none" ); }
+        [Test] public void Test_dispose_restore_background() { TestGif( "dispose-restore-background" ); }
+        [Test] public void Test_dispose_restore_previous() { TestGif( "dispose-restore-previous" ); }
+        [Test] public void Test_double_clears() { TestGif( "double-clears" ); }
+        [Test] public void Test_extra_data() { TestGif( "extra-data" ); }
+        [Test] public void Test_extra_pixels() { TestGif( "extra-pixels" ); }
+        [Test] public void Test_four_colors() { TestGif( "four-colors" ); }
+        [Test] public void Test_gif87a_animation() { TestGif( "gif87a-animation" ); }
+        [Test] public void Test_gif87a() { TestGif( "gif87a" ); }
+        [Test] public void Test_high_color() { TestGif( "high-color" ); }
+        [Test] public void Test_icc_color_profile_empty() { TestGif( "icc-color-profile-empty" ); }
+        [Test] public void Test_icc_color_profile() { TestGif( "icc-color-profile" ); }
+        [Test] public void Test_image_inside_bg() { TestGif( "image-inside-bg" ); }
+        [Test] public void Test_image_outside_bg() { TestGif( "image-outside-bg" ); }
+        [Test] public void Test_image_overlap_bg() { TestGif( "image-overlap-bg" ); }
+        [Test] public void Test_image_zero_height() { TestGif( "image-zero-height" ); }
+        [Test] public void Test_image_zero_size() { TestGif( "image-zero-size" ); }
+        [Test] public void Test_image_zero_width() { TestGif( "image-zero-width" ); }
+        [Test] public void Test_images_combine() { TestGif( "images-combine" ); }
+        [Test] public void Test_images_overlap() { TestGif( "images-overlap" ); }
+        [Test] public void Test_interlace() { TestGif( "interlace" ); }
+        [Test] public void Test_invalid_ascii_comment() { TestGif( "invalid-ascii-comment" ); }
+        [Test] public void Test_invalid_background() { TestGif( "invalid-background" ); }
+        [Test] public void Test_invalid_code() { TestGif( "invalid-code" ); }
+        [Test] public void Test_invalid_colors() { TestGif( "invalid-colors" ); }
+        [Test] public void Test_invalid_transparent() { TestGif( "invalid-transparent" ); }
+        [Test] public void Test_invalid_utf8_comment() { TestGif( "invalid-utf8-comment" ); }
+        [Test] public void Test_large_codes() { TestGif( "large-codes" ); }
+        [Test] public void Test_large_comment() { TestGif( "large-comment" ); }
+        [Test] public void Test_local_color_table() { TestGif( "local-color-table" ); }
+        [Test] public void Test_loop_animexts() { TestGif( "loop-animexts" ); }
+        [Test] public void Test_loop_buffer() { TestGif( "loop-buffer" ); }
+        [Test] public void Test_loop_buffer_max() { TestGif( "loop-buffer_max" ); }
+        [Test] public void Test_loop_infinite() { TestGif( "loop-infinite" ); }
+        [Test] public void Test_loop_max() { TestGif( "loop-max" ); }
+        [Test] public void Test_loop_once() { TestGif( "loop-once" ); }
+        [Test] public void Test_many_clears() { TestGif( "many-clears" ); }
+        [Test] public void Test_max_codes() { TestGif( "max-codes" ); }
+        [Test] public void Test_max_height() { TestGif( "max-height" ); }
+        [Test] public void Test_max_size() { TestGif( "max-size" ); }
+        [Test] public void Test_max_width() { TestGif( "max-width" ); }
+        [Test] public void Test_missing_pixels() { TestGif( "missing-pixels" ); }
+        [Test] public void Test_no_clear_and_eoi() { TestGif( "no-clear-and-eoi" ); }
+        [Test] public void Test_no_clear() { TestGif( "no-clear" ); }
+        [Test] public void Test_no_data() { TestGif( "no-data" ); }
+        [Test] public void Test_no_eoi() { TestGif( "no-eoi" ); }
+        [Test] public void Test_no_global_color_table() { TestGif( "no-global-color-table" ); }
+        [Test] public void Test_nul_application_extension() { TestGif( "nul-application-extension" ); }
+        [Test] public void Test_nul_comment() { TestGif( "nul-comment" ); }
+        [Test] public void Test_plain_text() { TestGif( "plain-text" ); }
+        [Test] public void Test_transparent() { TestGif( "transparent" ); }
+        [Test] public void Test_unknown_application_extension() { TestGif( "unknown-application-extension" ); }
+        [Test] public void Test_unknown_extension() { TestGif( "unknown-extension" ); }
+        [Test] public void Test_xmp_data_empty() { TestGif( "xmp-data-empty" ); }
+        [Test] public void Test_xmp_data() { TestGif( "xmp-data" ); }
+        [Test] public void Test_zero_height() { TestGif( "zero-height" ); }
+        [Test] public void Test_zero_size() { TestGif( "zero-size" ); }
+        [Test] public void Test_zero_width() { TestGif( "zero-width" ); }
     }
 }

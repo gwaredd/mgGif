@@ -1,0 +1,10 @@
+_tmp
+tools
+*.csproj
+obj
+Logs
+Library
+Temp
+.vs
+*.sln
+UserSettings

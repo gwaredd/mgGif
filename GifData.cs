@@ -283,7 +283,7 @@ namespace MG.GIF
 
             img.Data = ReadImageBlocks( r );
 
-            img.RawImage = new DecompressLZW().Decompress( img );
+            //img.RawImage = new DecompressLZW().Decompress( img );
 
             if( Images == null )
             {

@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Assertions;
 
 namespace MG.GIF
 {
@@ -63,7 +62,7 @@ namespace MG.GIF
             return code < ColourTable.Length ? ColourTable[code] : Background;
         }
 
-        public Color[] Decompress( GifData gif, GifData.Image img, GifData.Control ctrl )
+        public Color[] Decompress( GifData gif, byte[] data, GifData.Image img )
         {
             ColourTable = img.ColourTable != null ? img.ColourTable : gif.ColourTable;
 
@@ -72,12 +71,12 @@ namespace MG.GIF
             ClearCode       = MaximumCodeSize;
             EndCode         = ClearCode + 1;
 
-            TransparentColour = ctrl?.TransparentColour ?? (ushort) 0xFFFF;
+            TransparentColour = gif.TransparentColour;
             Background = gif.Background;
 
             ClearCodeTable();
 
-            var input  = new BitArray( img.Data );
+            var input  = new BitArray( data );
             var output = new Color[ gif.Width * gif.Height ];
             var writePos = 0;
 

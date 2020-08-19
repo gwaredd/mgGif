@@ -1,11 +1,12 @@
-﻿using NUnit.Framework;
+﻿// test suite from https://github.com/robert-ancell/pygif
+
+using NUnit.Framework;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-using MG.GIF;
 using System;
 
-namespace Tests
+namespace MG.GIF
 {
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -101,7 +102,7 @@ namespace Tests
 
             Assert.AreEqual( colours.Length, data.Width * data.Height );
 
-            if( data.Images != null )
+            if( data.Images != null && data.Images.Count > 0 )
             {
                 Assert.Less( frameIndex, data.Images.Count );
                 var frame = data.Images[ frameIndex ];
@@ -134,10 +135,10 @@ namespace Tests
                 }
                 else if( kv[1] == "delay" )
                 {
-                    Assert.IsNotNull( data.Controls );
-                    Assert.IsTrue( frameIndex < data.Controls.Count );
+                    Assert.IsNotNull( data.Images );
+                    Assert.IsTrue( frameIndex < data.Images.Count );
 
-                    var delay = data.Controls[ frameIndex ].Delay;
+                    var delay = data.Images[ frameIndex ].Delay;
                     var expected = Get(key);
 
                     Assert.AreEqual( expected, delay.ToString() );
@@ -227,7 +228,7 @@ namespace Tests
     //////////////////////////////////////////////////////////////////////////////////
 
 
-    public class MyTests
+    public class PyTests
     {
         private string DirData = @"Assets\Tests\~Data";
 

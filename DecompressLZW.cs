@@ -2,6 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
+using UnityEngine.Assertions;
 
 namespace MG.GIF
 {
@@ -14,13 +16,18 @@ namespace MG.GIF
         int MaximumCodeSize;
         int MinimumCodeSize;
 
-        Dictionary<int, List<byte>> CodeTable;
+        Dictionary<int, List<ushort>> CodeTable;
 
         private static int ReadNextCode( BitArray array, int offset, int codeSize )
         {
             // NB: do we need to account for endianess?
 
             int v = 0;
+
+            if( offset + codeSize > array.Count )
+            {
+                return 0;
+            }
 
             for( int i = 0; i < codeSize; i++ )
             {
@@ -36,15 +43,18 @@ namespace MG.GIF
         private void ClearCodeTable()
         {
             CodeSize  = MinimumCodeSize + 1;
-            NextSize = (int) Math.Pow( 2, CodeSize );
-            CodeTable = Enumerable.Range( 0, MaximumCodeSize ).ToDictionary(
-                i => i,
-                i => new List<byte>() { (byte)i }
-            );
+            NextSize  = (int) Math.Pow( 2, CodeSize );
+            CodeTable = Enumerable.Range( 0, MaximumCodeSize + 2 ).ToDictionary(
+                    i => i,
+                    i => new List<ushort>() { (ushort) i }
+                );
         }
 
-        public byte[] Decompress( GifData.Image img )
+        public Color[] Decompress( GifData gif, GifData.Image img )
         {
+            var colourTable = img.ColourTable != null ? img.ColourTable : gif.ColourTable;
+            //img.RawImage[i] = index < colours.Count ? colours[index] : Background;
+
             MinimumCodeSize = img.LzwMinimumCodeSize;
             MaximumCodeSize = (int) Math.Pow( 2, MinimumCodeSize );
             ClearCode       = MaximumCodeSize;
@@ -53,56 +63,71 @@ namespace MG.GIF
             ClearCodeTable();
 
             var input  = new BitArray( img.Data );
-            var output = new byte[ img.Width * img.Height ];
+            var output = new Color[ gif.Width * gif.Height ];
             var writePos = 0;
 
             // LZW decode loop
 
             var position = 0;
-            var lastCode = -1;
+            var previousCode = -1;
 
             while( position < input.Length )
             {
-                int code = ReadNextCode( input, position, CodeSize );
+                int curCode = ReadNextCode( input, position, CodeSize );
                 position += CodeSize;
 
-                if( code == ClearCode )
+                if( curCode == ClearCode )
                 {
                     ClearCodeTable();
-                    lastCode = -1;
+                    previousCode = -1;
                     continue;
                 }
-                else if( code == EndCode )
+                else if( curCode == EndCode )
                 {
                     break;
                 }
-                else if( CodeTable.ContainsKey( code ) )
+                else if( CodeTable.ContainsKey( curCode ) )
                 {
-                    foreach( var v in CodeTable[ code ] )
+                    var codes = CodeTable[ curCode ];
+
+                    foreach( var code in codes )
                     {
-                        output[writePos++] = v;
+                        output[ writePos++ ] = code < colourTable.Count ? colourTable[ code ] : gif.Background;
+                    }
+
+                    if( previousCode >= 0 )
+                    {
+                        var newCodes = new List<ushort>( CodeTable[ previousCode ] );
+                        newCodes.Add( codes[0] );
+                        CodeTable[ CodeTable.Count ] = newCodes;
                     }
                 }
-                else if( code > CodeTable.Count )
+                else if( curCode >= CodeTable.Count )
                 {
-                    if( lastCode >= 0 && CodeTable.ContainsKey( lastCode ) )
+                    if( previousCode < 0 )
                     {
-                        foreach( var v in CodeTable[ lastCode ] )
-                        {
-                            output[ writePos++ ] = v;
-                        }
-
-                        output[writePos++] = CodeTable[lastCode][0];
-                    }
-                    else
-                    {
-                        // TODO: error
                         continue;
                     }
+
+                    var codes = CodeTable[ previousCode ];
+
+                    foreach( var code in codes )
+                    {
+                        output[writePos++] = code < colourTable.Count ? colourTable[code] : gif.Background;
+                    }
+
+                    {
+                        var code = codes[0];
+                        output[writePos++] = code < colourTable.Count ? colourTable[code] : gif.Background;
+                    }
+
+                    var newCodes = new List<ushort>( CodeTable[ previousCode ] );
+                    newCodes.Add( codes[0] );
+                    CodeTable[ CodeTable.Count ] = newCodes;
                 }
                 else
                 {
-                    // TODO: error
+                    Debug.LogWarning( $"Unexpected code {curCode}" );
                     continue;
                 }
 
@@ -111,20 +136,18 @@ namespace MG.GIF
                     break;
                 }
 
-                if( lastCode >= 0 && CodeTable.ContainsKey( lastCode ) )
-                {
-                    var entry = new List<byte>( CodeTable[ lastCode ] );
-                    entry.Add( CodeTable[code][0] );
-                    CodeTable[CodeTable.Count] = entry;
-                }
+                previousCode = curCode;
 
-                lastCode = code;
-
-                if( CodeSize < 12 && CodeTable.Count >= NextSize )
+                if( CodeTable.Count >= NextSize && CodeSize < 12 )
                 {
                     CodeSize++;
                     NextSize = (int) Math.Pow( 2, CodeSize );
                 }
+            }
+
+            while( writePos < output.Length )
+            {
+                output[writePos++] = Color.clear;
             }
 
             return output;

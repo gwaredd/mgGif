@@ -290,28 +290,7 @@ namespace MG.GIF
 
             img.Data = ReadImageBlocks( r );
 
-            var raw = new DecompressLZW().Decompress( img );
-
-            img.RawImage = new Color[ img.Width * img.Height ];
-
-            if( img.ColourTable != null )
-            {
-                for( int i = 0; i < raw.Length; i++ )
-                {
-                    img.RawImage[i] = img.ColourTable[raw[i]];
-                }
-            }
-            else if( ColourTable != null )
-            {
-                for( int i = 0; i < raw.Length; i++ )
-                {
-                    img.RawImage[i] = ColourTable[raw[i]];
-                }
-            }
-            else
-            {
-                Debug.LogError( "No colour table" );
-            }
+            img.RawImage = new DecompressLZW().Decompress( this, img );
 
 
             if( Images == null )

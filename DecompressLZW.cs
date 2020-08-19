@@ -74,16 +74,8 @@ namespace MG.GIF
 
             if( row < mGif.Height && col < mGif.Width )
             {
-                if( mImg.Interlaced )
-                {
-                    var index = row * mGif.Width + col;
-                    Output[ index ] = GetColour( code );
-                }
-                else
-                {
-                    var index = row * mGif.Width + col;
-                    Output[index] = GetColour( code );
-                }
+                var index = row * mGif.Width + col;
+                Output[index] = GetColour( code );
             }
 
             PixelNum++;

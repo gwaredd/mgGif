@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using UnityEngine.Assertions;
 
 namespace MG.GIF
 {
@@ -10,33 +11,33 @@ namespace MG.GIF
         [Flags]
         private enum Flag
         {
-            Interlaced      = 0x40,
-            ColourTable     = 0x80,
-            TableSizeMask   = 0x07,
-            BitDepthMask    = 0x70,
+            Interlaced = 0x40,
+            ColourTable = 0x80,
+            TableSizeMask = 0x07,
+            BitDepthMask = 0x70,
         }
 
         private enum Block
         {
-            Image       = 0x2C,
-            Extension   = 0x21,
-            End         = 0x3B
+            Image = 0x2C,
+            Extension = 0x21,
+            End = 0x3B
         }
 
         private enum Extension
         {
-            GraphicControl  = 0xF9,
-            Comments        = 0xFE,
-            PlainText       = 0x01,
+            GraphicControl = 0xF9,
+            Comments = 0xFE,
+            PlainText = 0x01,
             ApplicationData = 0xFF
         }
 
         public enum Disposal
         {
-            None                = 0x00,
-            DoNotDispose        = 0x04,
-            RestoreBackground   = 0x08,
-            ReturnToPrevious    = 0x0C
+            None = 0x00,
+            DoNotDispose = 0x04,
+            RestoreBackground = 0x08, // default
+            ReturnToPrevious = 0x0C
         }
 
         public class Image
@@ -48,23 +49,53 @@ namespace MG.GIF
             public bool     Interlaced;
             public byte     LzwMinimumCodeSize;
             public ushort   Delay;
-
-            public Color[] ColourTable;
-            public Color[] RawImage;
+            public Color[]  ColourTable;
+            public Color[]  RawImage;
+            public Disposal DisposalMethod = Disposal.None;
         }
 
-        public string   Version         { get; private set; }
-        public ushort   Width           { get; private set; }
-        public ushort   Height          { get; private set; }
-        public int      BitDepth        { get; private set; }
+        public string Version  { get; private set; }
+        public ushort Width    { get; private set; }
+        public ushort Height   { get; private set; }
+        public int    BitDepth { get; private set; }
 
-        public List<Image>  Images  = new List<Image>();
+        public List<Image>  Images = new List<Image>();
 
         public  Color[]     ColourTable;
         public  Color       Background          = Color.black;
+        public  byte        BackgroundIndex     = 0xFF;
         private ushort      Delay               = 0;
         public  ushort      TransparentColour   = 0xFFFF;
         public  Disposal    DisposalMethod      = Disposal.None;
+        public  ushort      LoopCount           = 0;
+
+        public Image GetImage( int index )
+        {
+            return index < Images.Count ? Images[index] : null;
+        }
+
+        public Image GetFrame( int index )
+        {
+            if( Images.Count == 0 )
+            {
+                return null;
+            }
+
+            foreach( var img in Images )
+            {
+                if( img.Delay > 0 )
+                {
+                    if( index == 0 )
+                    {
+                        return img;
+                    }
+
+                    index--;
+                }
+            }
+
+            return Images[Images.Count - 1];
+        }
 
 
         //------------------------------------------------------------------------------
@@ -104,15 +135,15 @@ namespace MG.GIF
 
         private Color[] ReadColourTable( Flag flags, BinaryReader r )
         {
-            var tableSize = (int) Math.Pow( 2, (int)( flags & Flag.TableSizeMask ) + 1 );
+            var tableSize   = (int) Math.Pow( 2, (int)( flags & Flag.TableSizeMask ) + 1 );
             var colourTable = new Color[ tableSize ];
 
             for( var i = 0; i < tableSize; i++ )
             {
                 colourTable[i] = new Color(
-                    ( (float) r.ReadByte() ) / 255.0f,
-                    ( (float) r.ReadByte() ) / 255.0f,
-                    ( (float) r.ReadByte() ) / 255.0f
+                      r.ReadByte() / 255.0f,
+                      r.ReadByte() / 255.0f,
+                      r.ReadByte() / 255.0f
                 );
             }
 
@@ -134,21 +165,22 @@ namespace MG.GIF
 
             // read header
 
-            Width       = r.ReadUInt16();
-            Height      = r.ReadUInt16();
-            var flags   = (Flag) r.ReadByte();
-            var bgIndex = r.ReadByte();
+            Width = r.ReadUInt16();
+            Height = r.ReadUInt16();
+            var f = r.ReadByte();
+            var flags       = (Flag) f;
+            BitDepth = (int) ( flags & Flag.BitDepthMask ) >> 4 + 1;
+            BackgroundIndex = r.ReadByte();
             r.ReadByte(); // aspect ratio
-            BitDepth    = (int)( flags & Flag.BitDepthMask ) >> 4 + 1;
 
             if( flags.HasFlag( Flag.ColourTable ) )
             {
                 ColourTable = ReadColourTable( flags, r );
-                Background  = bgIndex < ColourTable.Length ? ColourTable[bgIndex] : Color.black;
-            }
-            else
-            {
-                Background = Color.black;
+
+                if( BackgroundIndex < ColourTable.Length )
+                {
+                    Background = ColourTable[BackgroundIndex];
+                }
             }
         }
 
@@ -158,7 +190,9 @@ namespace MG.GIF
         {
             while( true )
             {
-                switch( (Block) r.ReadByte() )
+                var block = (Block) r.ReadByte();
+
+                switch( block )
                 {
                     case Block.Image:
                         ReadImageBlock( r );
@@ -168,13 +202,19 @@ namespace MG.GIF
 
                         var ext = (Extension) r.ReadByte();
 
-                        if( ext == Extension.GraphicControl )
+                        switch( ext )
                         {
-                            ReadControlBlock( r );
-                        }
-                        else
-                        {
-                            SkipBlock( r );
+                            case Extension.GraphicControl:
+                                ReadControlBlock( r );
+                                break;
+
+                            case Extension.ApplicationData:
+                                ReadApplicationData( r );
+                                break;
+
+                            default:
+                                SkipBlock( r );
+                                break;
                         }
 
                         break;
@@ -196,7 +236,7 @@ namespace MG.GIF
 
             while( blockSize != 0x00 )
             {
-                r.ReadBytes( blockSize );
+                r.BaseStream.Seek( blockSize, SeekOrigin.Current );
                 blockSize = r.ReadByte();
             }
         }
@@ -226,18 +266,74 @@ namespace MG.GIF
                     break;
             }
 
-            var delay = r.ReadUInt16();
-
-            if( delay != 0 )
-            {
-                Delay = delay;
-            }
+            Delay = r.ReadUInt16();
 
             var hasTransparentColour = ( flags & 0x01 ) == 0x01;
             var transparentColour = r.ReadByte();
-            TransparentColour = hasTransparentColour ? transparentColour : (ushort) 0xFFFF;
+
+            if( hasTransparentColour )
+            {
+                TransparentColour = transparentColour;
+            }
+            else
+            {
+                TransparentColour = 0xFFFF;
+            }
 
             r.ReadByte(); // terminator
+        }
+
+        //------------------------------------------------------------------------------
+
+        private void ReadAnimExt( BinaryReader r )
+        {
+            var blockSize = r.ReadByte();
+
+            while( blockSize != 0x00 )
+            {
+                if( blockSize == 3 )
+                {
+                    var id  = r.ReadByte();
+                    var val = r.ReadUInt16();
+
+                    if( id == 1 )
+                    {
+                        LoopCount = val == 0 ? (ushort) 0xFFFF : val;
+                    }
+                }
+                else
+                {
+                    r.BaseStream.Seek( blockSize, SeekOrigin.Current );
+                }
+
+                blockSize = r.ReadByte();
+            }
+        }
+
+        private void ReadApplicationData( BinaryReader r )
+        {
+            var blockSize = r.ReadByte();
+
+            if( blockSize == 0x0b )
+            {
+                var appId = System.Text.Encoding.Default.GetString( r.ReadBytes( 11 ) );
+
+                if( appId == "NETSCAPE2.0" || appId == "ANIMEXTS1.0" )
+                {
+                    ReadAnimExt( r );
+                    return;
+                }
+
+                blockSize = r.ReadByte();
+            }
+
+            // blocks
+
+            while( blockSize != 0x00 )
+            {
+                r.BaseStream.Seek( blockSize, SeekOrigin.Current );
+                blockSize = r.ReadByte();
+            }
         }
 
 
@@ -247,12 +343,12 @@ namespace MG.GIF
         {
             var img = new Image();
 
-            img.Delay = Delay;
-
-            img.Left   = r.ReadUInt16();
-            img.Top    = r.ReadUInt16();
-            img.Width  = r.ReadUInt16();
-            img.Height = r.ReadUInt16();
+            img.Left           = r.ReadUInt16();
+            img.Top            = r.ReadUInt16();
+            img.Width          = r.ReadUInt16();
+            img.Height         = r.ReadUInt16();
+            img.Delay          = Delay;
+            img.DisposalMethod = DisposalMethod;
 
             var flags = (Flag) r.ReadByte();
             img.Interlaced = flags.HasFlag( Flag.Interlaced );
@@ -269,16 +365,49 @@ namespace MG.GIF
 
             img.LzwMinimumCodeSize = r.ReadByte();
 
-            // TODO: decode!
-
-            if( img.Interlaced )
-            {
-                Debug.LogWarning( "image is interlaced!" );
-            }
-
             var data = ReadImageBlocks( r );
 
-            img.RawImage = new DecompressLZW().Decompress( this, data, img );
+            // copy background colour?
+            Color[] prevImg = null;
+
+            switch( DisposalMethod )
+            {
+                case Disposal.None:
+                case Disposal.DoNotDispose:
+
+                    {
+                        var prev = Images.Count > 0 ? Images[ Images.Count - 1 ] : null;
+
+                        if( prev?.RawImage != null )
+                        {
+                            prevImg = prev.RawImage;
+                        }
+                    }
+
+                    break;
+
+
+                case Disposal.ReturnToPrevious:
+
+                    for( int i=Images.Count - 1; i >= 0; i-- )
+                    {
+                        var prev = Images[ i ];
+
+                        if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
+                        {
+                            prevImg = prev.RawImage;
+                            break;
+                        }
+                    }
+
+                    break;
+
+                case Disposal.RestoreBackground:
+                default:
+                    break;
+            }
+
+            img.RawImage = new DecompressLZW().Decompress( this, data, img, prevImg );
 
             Images.Add( img );
         }

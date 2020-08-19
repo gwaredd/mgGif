@@ -31,7 +31,7 @@ namespace MG.GIF
             ApplicationData = 0xFF
         }
 
-        public enum DisposalMethod
+        public enum Disposal
         {
             None                = 0x00,
             DoNotDispose        = 0x04,
@@ -47,29 +47,24 @@ namespace MG.GIF
             public ushort   Height;
             public bool     Interlaced;
             public byte     LzwMinimumCodeSize;
-            public byte[]   Data;
+            public ushort   Delay;
 
             public Color[] ColourTable;
             public Color[] RawImage;
-        }
-
-        public class Control
-        {
-            public DisposalMethod DisposalMethod;
-            public ushort Delay;
-            public ushort TransparentColour;
         }
 
         public string   Version         { get; private set; }
         public ushort   Width           { get; private set; }
         public ushort   Height          { get; private set; }
         public int      BitDepth        { get; private set; }
-        public byte     AspectRatio     { get; private set; }
-        public Color    Background      { get; private set; }
 
-        public Color[]          ColourTable;
-        public List<Control>    Controls;
-        public List<Image>      Images;
+        public List<Image>  Images  = new List<Image>();
+
+        public  Color[]     ColourTable;
+        public  Color       Background          = Color.black;
+        private ushort      Delay               = 0;
+        public  ushort      TransparentColour   = 0xFFFF;
+        public  Disposal    DisposalMethod      = Disposal.None;
 
 
         //------------------------------------------------------------------------------
@@ -143,7 +138,7 @@ namespace MG.GIF
             Height      = r.ReadUInt16();
             var flags   = (Flag) r.ReadByte();
             var bgIndex = r.ReadByte();
-            AspectRatio = r.ReadByte();
+            r.ReadByte(); // aspect ratio
             BitDepth    = (int)( flags & Flag.BitDepthMask ) >> 4 + 1;
 
             if( flags.HasFlag( Flag.ColourTable ) )
@@ -211,8 +206,6 @@ namespace MG.GIF
 
         private void ReadControlBlock( BinaryReader r )
         {
-            var ext = new Control();
-
             var blockSize = r.ReadByte();
 
             var flags = r.ReadByte();
@@ -220,33 +213,31 @@ namespace MG.GIF
             switch( flags & 0x1C )
             {
                 case 0x04:
-                    ext.DisposalMethod = DisposalMethod.DoNotDispose;
+                    DisposalMethod = Disposal.DoNotDispose;
                     break;
                 case 0x08:
-                    ext.DisposalMethod = DisposalMethod.RestoreBackground;
+                    DisposalMethod = Disposal.RestoreBackground;
                     break;
                 case 0x0C:
-                    ext.DisposalMethod = DisposalMethod.ReturnToPrevious;
+                    DisposalMethod = Disposal.ReturnToPrevious;
                     break;
                 default:
-                    ext.DisposalMethod = DisposalMethod.None;
+                    DisposalMethod = Disposal.None;
                     break;
             }
 
-            ext.Delay = r.ReadUInt16();
+            var delay = r.ReadUInt16();
+
+            if( delay != 0 )
+            {
+                Delay = delay;
+            }
 
             var hasTransparentColour = ( flags & 0x01 ) == 0x01;
             var transparentColour = r.ReadByte();
-            ext.TransparentColour = hasTransparentColour ? transparentColour : (ushort) 0xFFFF;
+            TransparentColour = hasTransparentColour ? transparentColour : (ushort) 0xFFFF;
 
             r.ReadByte(); // terminator
-
-            if( Controls == null )
-            {
-                Controls = new List<Control>();
-            }
-
-            Controls.Add( ext );
         }
 
 
@@ -255,6 +246,8 @@ namespace MG.GIF
         protected void ReadImageBlock( BinaryReader r )
         {
             var img = new Image();
+
+            img.Delay = Delay;
 
             img.Left   = r.ReadUInt16();
             img.Top    = r.ReadUInt16();
@@ -283,17 +276,9 @@ namespace MG.GIF
                 Debug.LogWarning( "image is interlaced!" );
             }
 
-            img.Data = ReadImageBlocks( r );
+            var data = ReadImageBlocks( r );
 
-            var ctrl = Controls?[Controls.Count-1];
-
-            img.RawImage = new DecompressLZW().Decompress( this, img, ctrl );
-
-
-            if( Images == null )
-            {
-                Images = new List<Image>();
-            }
+            img.RawImage = new DecompressLZW().Decompress( this, data, img );
 
             Images.Add( img );
         }

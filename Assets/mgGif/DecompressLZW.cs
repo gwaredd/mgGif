@@ -15,8 +15,13 @@ namespace MG.GIF
         int MaximumCodeSize;
         int MinimumCodeSize;
         ushort TransparentColour;
+
         Color Background;
         Color[] ColourTable;
+        Color[] Output;
+        int PixelNum;
+        GifData mGif;
+        GifData.Image mImg;
 
         Dictionary<int, List<ushort>> CodeTable;
 
@@ -62,23 +67,59 @@ namespace MG.GIF
             return code < ColourTable.Length ? ColourTable[code] : Background;
         }
 
-        public Color[] Decompress( GifData gif, byte[] data, GifData.Image img )
+        public void Write( ushort code )
+        {
+            var row = mImg.Top + PixelNum / mImg.Width;
+            var col = mImg.Left + PixelNum % mImg.Width;
+
+            if( row < mGif.Height && col < mGif.Width )
+            {
+                if( mImg.Interlaced )
+                {
+                    var index = row * mGif.Width + col;
+                    Output[ index ] = GetColour( code );
+                }
+                else
+                {
+                    var index = row * mGif.Width + col;
+                    Output[index] = GetColour( code );
+                }
+            }
+
+            PixelNum++;
+        }
+
+        public Color[] Decompress( GifData gif, byte[] data, GifData.Image img, Color[] prevImg )
         {
             ColourTable = img.ColourTable != null ? img.ColourTable : gif.ColourTable;
 
             MinimumCodeSize = img.LzwMinimumCodeSize;
             MaximumCodeSize = (int) Math.Pow( 2, MinimumCodeSize );
-            ClearCode       = MaximumCodeSize;
-            EndCode         = ClearCode + 1;
+            ClearCode = MaximumCodeSize;
+            EndCode = ClearCode + 1;
 
             TransparentColour = gif.TransparentColour;
             Background = gif.Background;
 
             ClearCodeTable();
 
-            var input  = new BitArray( data );
-            var output = new Color[ gif.Width * gif.Height ];
-            var writePos = 0;
+            var input = new BitArray( data );
+
+            mGif = gif;
+            mImg = img;
+
+            // copy background colour?
+
+            if( prevImg != null )
+            {
+                Output = prevImg.Clone() as Color[];
+            }
+            else
+            {
+                Output = Enumerable.Repeat( Color.clear, gif.Width * gif.Height ).ToArray();
+            }
+
+            PixelNum = 0;
 
             // LZW decode loop
 
@@ -106,7 +147,7 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        output[ writePos++ ] = GetColour( code );
+                        Write( code );
                     }
 
                     if( previousCode >= 0 )
@@ -127,10 +168,10 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        output[writePos++] = GetColour( code );
+                        Write( code );
                     }
 
-                    output[writePos++] = GetColour( codes[0] );
+                    Write( codes[0] );
 
                     var newCodes = new List<ushort>( CodeTable[ previousCode ] );
                     newCodes.Add( codes[0] );
@@ -142,7 +183,7 @@ namespace MG.GIF
                     continue;
                 }
 
-                if( writePos >= output.Length )
+                if( PixelNum >= Output.Length )
                 {
                     break;
                 }
@@ -156,12 +197,7 @@ namespace MG.GIF
                 }
             }
 
-            while( writePos < output.Length )
-            {
-                output[writePos++] = Color.clear;
-            }
-
-            return output;
+            return Output;
         }
     }
 }

@@ -39,7 +39,7 @@ namespace MG.GIF
             ReturnToPrevious    = 0x0C
         }
 
-        public struct Image
+        public class Image
         {
             public ushort   Left;
             public ushort   Top;
@@ -49,15 +49,15 @@ namespace MG.GIF
             public byte     LzwMinimumCodeSize;
             public byte[]   Data;
 
-            public List<Color> ColourTable;
+            public Color[] ColourTable;
             public Color[] RawImage;
         }
 
-        public struct Control
+        public class Control
         {
             public DisposalMethod DisposalMethod;
-            public ushort   Delay;
-            public int      TransparentColour;
+            public ushort Delay;
+            public ushort TransparentColour;
         }
 
         public string   Version         { get; private set; }
@@ -67,7 +67,7 @@ namespace MG.GIF
         public byte     AspectRatio     { get; private set; }
         public Color    Background      { get; private set; }
 
-        public List<Color>      ColourTable;
+        public Color[]          ColourTable;
         public List<Control>    Controls;
         public List<Image>      Images;
 
@@ -107,18 +107,18 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private List<Color> ReadColourTable( Flag flags, BinaryReader r )
+        private Color[] ReadColourTable( Flag flags, BinaryReader r )
         {
             var tableSize = (int) Math.Pow( 2, (int)( flags & Flag.TableSizeMask ) + 1 );
-            var colourTable = new List<Color>( tableSize );
+            var colourTable = new Color[ tableSize ];
 
             for( var i = 0; i < tableSize; i++ )
             {
-                colourTable.Add( new Color(
+                colourTable[i] = new Color(
                     ( (float) r.ReadByte() ) / 255.0f,
                     ( (float) r.ReadByte() ) / 255.0f,
                     ( (float) r.ReadByte() ) / 255.0f
-                ) );
+                );
             }
 
             return colourTable;
@@ -149,7 +149,7 @@ namespace MG.GIF
             if( flags.HasFlag( Flag.ColourTable ) )
             {
                 ColourTable = ReadColourTable( flags, r );
-                Background  = bgIndex < ColourTable.Count ? ColourTable[bgIndex] : Color.black;
+                Background  = bgIndex < ColourTable.Length ? ColourTable[bgIndex] : Color.black;
             }
             else
             {
@@ -237,14 +237,9 @@ namespace MG.GIF
 
             var hasTransparentColour = ( flags & 0x01 ) == 0x01;
             var transparentColour = r.ReadByte();
-            ext.TransparentColour = hasTransparentColour ? transparentColour : -1;
+            ext.TransparentColour = hasTransparentColour ? transparentColour : (ushort) 0xFFFF;
 
             r.ReadByte(); // terminator
-
-            if( ext.Delay == 0 )
-            {
-                return;
-            }
 
             if( Controls == null )
             {
@@ -290,7 +285,9 @@ namespace MG.GIF
 
             img.Data = ReadImageBlocks( r );
 
-            img.RawImage = new DecompressLZW().Decompress( this, img );
+            var ctrl = Controls?[Controls.Count-1];
+
+            img.RawImage = new DecompressLZW().Decompress( this, img, ctrl );
 
 
             if( Images == null )

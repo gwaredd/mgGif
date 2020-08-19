@@ -366,7 +366,7 @@ namespace MG.GIF
                     rows[r] = o + ( r - 2 ) / 4;
                 }
                 // every 2nd row starting at 1
-                else if( ( r + 1 ) % 2 == 0 )
+                else // if( ( r + 1 ) % 2 == 0 )
                 {
                     var o = numRows / 2;
                     rows[r] = o + ( r - 1 ) / 2;
@@ -458,7 +458,6 @@ namespace MG.GIF
             {
                 img.RawImage = Deinterlace( img.RawImage, img.Width );
             }
-
 
             Images.Add( img );
         }

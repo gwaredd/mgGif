@@ -15,6 +15,9 @@ namespace MG.GIF
         int NextSize;
         int MaximumCodeSize;
         int MinimumCodeSize;
+        ushort TransparentColour;
+        Color Background;
+        Color[] ColourTable;
 
         Dictionary<int, List<ushort>> CodeTable;
 
@@ -50,15 +53,27 @@ namespace MG.GIF
                 );
         }
 
-        public Color[] Decompress( GifData gif, GifData.Image img )
+        public Color GetColour( ushort code )
         {
-            var colourTable = img.ColourTable != null ? img.ColourTable : gif.ColourTable;
-            //img.RawImage[i] = index < colours.Count ? colours[index] : Background;
+            if( code == TransparentColour )
+            {
+                return Color.clear;
+            }
+
+            return code < ColourTable.Length ? ColourTable[code] : Background;
+        }
+
+        public Color[] Decompress( GifData gif, GifData.Image img, GifData.Control ctrl )
+        {
+            ColourTable = img.ColourTable != null ? img.ColourTable : gif.ColourTable;
 
             MinimumCodeSize = img.LzwMinimumCodeSize;
             MaximumCodeSize = (int) Math.Pow( 2, MinimumCodeSize );
             ClearCode       = MaximumCodeSize;
             EndCode         = ClearCode + 1;
+
+            TransparentColour = ctrl?.TransparentColour ?? (ushort) 0xFFFF;
+            Background = gif.Background;
 
             ClearCodeTable();
 
@@ -92,7 +107,7 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        output[ writePos++ ] = code < colourTable.Count ? colourTable[ code ] : gif.Background;
+                        output[ writePos++ ] = GetColour( code );
                     }
 
                     if( previousCode >= 0 )
@@ -113,13 +128,10 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        output[writePos++] = code < colourTable.Count ? colourTable[code] : gif.Background;
+                        output[writePos++] = GetColour( code );
                     }
 
-                    {
-                        var code = codes[0];
-                        output[writePos++] = code < colourTable.Count ? colourTable[code] : gif.Background;
-                    }
+                    output[writePos++] = GetColour( codes[0] );
 
                     var newCodes = new List<ushort>( CodeTable[ previousCode ] );
                     newCodes.Add( codes[0] );

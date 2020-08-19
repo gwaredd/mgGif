@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using UnityEngine.Assertions;
 
 namespace MG.GIF
 {
@@ -11,33 +10,33 @@ namespace MG.GIF
         [Flags]
         private enum Flag
         {
-            Interlaced = 0x40,
-            ColourTable = 0x80,
+            Interlaced    = 0x40,
+            ColourTable   = 0x80,
             TableSizeMask = 0x07,
-            BitDepthMask = 0x70,
+            BitDepthMask  = 0x70,
         }
 
         private enum Block
         {
-            Image = 0x2C,
+            Image     = 0x2C,
             Extension = 0x21,
-            End = 0x3B
+            End       = 0x3B
         }
 
         private enum Extension
         {
-            GraphicControl = 0xF9,
-            Comments = 0xFE,
-            PlainText = 0x01,
+            GraphicControl  = 0xF9,
+            Comments        = 0xFE,
+            PlainText       = 0x01,
             ApplicationData = 0xFF
         }
 
         public enum Disposal
         {
-            None = 0x00,
-            DoNotDispose = 0x04,
-            RestoreBackground = 0x08, // default
-            ReturnToPrevious = 0x0C
+            None              = 0x00,
+            DoNotDispose      = 0x04,
+            RestoreBackground = 0x08,
+            ReturnToPrevious  = 0x0C
         }
 
         public class Image
@@ -339,6 +338,52 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
+        protected Color[] Deinterlace( Color[] input, int width )
+        {
+            var output = new Color[ input.Length ];
+
+            var numRows = input.Length / width;
+
+            var rows = new int[ numRows ];
+
+            for( var r = 0; r < numRows; r++ )
+            {
+                // every 8th row starting at 0
+                if( r % 8 == 0 )
+                {
+                    rows[r] = r / 8;
+                }
+                // every 8th row starting at 4
+                else if( ( r + 4 ) % 8 == 0 )
+                {
+                    var o = numRows / 8;
+                    rows[r] = o + ( r - 4 ) / 8;
+                }
+                // every 4th row starting at 2
+                else if( ( r + 2 ) % 4 == 0 )
+                {
+                    var o = numRows / 4;
+                    rows[r] = o + ( r - 2 ) / 4;
+                }
+                // every 2nd row starting at 1
+                else if( ( r + 1 ) % 2 == 0 )
+                {
+                    var o = numRows / 2;
+                    rows[r] = o + ( r - 1 ) / 2;
+                }
+            }
+
+            int writePos=0;
+
+            foreach( var row in rows )
+            {
+                Array.Copy( input, row * width, output, writePos, width );
+                writePos += width;
+            }
+
+            return output;
+        }
+
         protected void ReadImageBlock( BinaryReader r )
         {
             var img = new Image();
@@ -408,6 +453,12 @@ namespace MG.GIF
             }
 
             img.RawImage = new DecompressLZW().Decompress( this, data, img, prevImg );
+
+            if( img.Interlaced )
+            {
+                img.RawImage = Deinterlace( img.RawImage, img.Width );
+            }
+
 
             Images.Add( img );
         }

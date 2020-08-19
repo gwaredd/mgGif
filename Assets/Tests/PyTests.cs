@@ -115,6 +115,7 @@ namespace MG.GIF
 
             for( var i = 0; i < colours.Length; i++ )
             {
+                //Debug.Log( i );
                 Assert.AreEqual( colours[i], frame.RawImage[i] );
             }
         }

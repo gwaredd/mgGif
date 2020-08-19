@@ -101,11 +101,15 @@ namespace Tests
 
             Assert.AreEqual( colours.Length, data.Width * data.Height );
 
-            var frame = data.Images[frameIndex];
-
-            for( var i=0; i < colours.Length; i++ )
+            if( data.Images != null )
             {
-                Assert.AreEqual( colours[i], frame.RawImage[i] );
+                Assert.Less( frameIndex, data.Images.Count );
+                var frame = data.Images[ frameIndex ];
+
+                for( var i = 0; i < colours.Length; i++ )
+                {
+                    Assert.AreEqual( colours[i], frame.RawImage[i] );
+                }
             }
         }
 

@@ -13,8 +13,29 @@ public class AnimatedTextures : MonoBehaviour
             return;
         }
 
-        //var path  = Path.Combine( Application.streamingAssetsPath, Filename );
-        //var gif   = MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
+        var path  = Path.Combine( Application.streamingAssetsPath, Filename );
+        var gif   = MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
+
+        var tex = new Texture2D( gif.Width, gif.Height, TextureFormat.ARGB32, false );
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode = TextureWrapMode.Clamp;
+
+        var img = gif.GetFrame( 0 );
+
+        tex.SetPixels32( img.RawImage );
+
+        //var p = new Color32[ S * S ];
+
+        //for( int i=0; i < S * S; i++ )
+        //{
+        //    byte r = (byte) Random.Range( 0, 255 );
+        //    byte g = (byte) Random.Range( 0, 255 );
+        //    byte b = (byte) Random.Range( 0, 255 );
+        //    p[i] = new Color32( r, g, b, 0xFF );
+        //}
+        tex.Apply();
+
+
 
         //Debug.Log( $"{gif.Width}x{gif.Height} #{gif.Images.Count}" );
 
@@ -30,7 +51,7 @@ public class AnimatedTextures : MonoBehaviour
 
         //texture.Apply( false );
 
-        GetComponent<Renderer>().material.mainTexture = Tex;
+        GetComponent<Renderer>().material.mainTexture = tex;
         //GetComponent<Renderer>().material.SetTexture( "_MainTex", Tex );
 
     }

@@ -100,15 +100,15 @@ namespace MG.GIF
 
             Assert.IsTrue( bytes.Length % 4 == 0 );
 
-            var colours = new Color[ bytes.Length / 4 ];
+            var colours = new Color32[ bytes.Length / 4 ];
 
             for( int i=0; i < bytes.Length; i += 4 )
             {
-                colours[ i / 4 ] = new Color(
-                    bytes[i + 0] / 255.0f,
-                    bytes[i + 1] / 255.0f,
-                    bytes[i + 2] / 255.0f,
-                    bytes[i + 3] / 255.0f
+                colours[ i / 4 ] = new Color32(
+                    bytes[i + 0],
+                    bytes[i + 1],
+                    bytes[i + 2],
+                    bytes[i + 3]
                 );
             }
 

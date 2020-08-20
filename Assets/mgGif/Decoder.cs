@@ -36,9 +36,10 @@ namespace MG.GIF
         private ImageList   Images;
 
         // colour
-        private Color[]     GlobalColourTable = null;
-        private Color[]     ActiveColourTable;
-        private Color       BackgroundColour  = Color.black;
+        private Color32[]   GlobalColourTable = null;
+        private Color32[]   ActiveColourTable;
+        private Color32     BackgroundColour  = new Color32(0x00,0x00,0x00,0xFF);
+        private Color32     ClearColour       = new Color32(0x00,0x00,0x00,0x00);
         private byte        BackgroundIndex   = 0xFF;
         private ushort      TransparentIndex  = 0xFFFF;
 
@@ -93,17 +94,18 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private Color[] ReadColourTable( ImageFlag flags, BinaryReader r )
+        private Color32[] ReadColourTable( ImageFlag flags, BinaryReader r )
         {
             var tableSize   = (int) Math.Pow( 2, (int)( flags & ImageFlag.TableSizeMask ) + 1 );
-            var colourTable = new Color[ tableSize ];
+            var colourTable = new Color32[ tableSize ];
 
             for( var i = 0; i < tableSize; i++ )
             {
-                colourTable[i] = new Color(
-                    r.ReadByte() / 255.0f,
-                    r.ReadByte() / 255.0f,
-                    r.ReadByte() / 255.0f
+                colourTable[i] = new Color32(
+                    r.ReadByte(),
+                    r.ReadByte(),
+                    r.ReadByte(),
+                    0xFF
                 );
             }
 
@@ -241,9 +243,9 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected Color[] Deinterlace( Color[] input, int width )
+        protected Color32[] Deinterlace( Color32[] input, int width )
         {
-            var output   = new Color[ input.Length ];
+            var output   = new Color32[ input.Length ];
             var numRows  = input.Length / width;
             var writePos = 0;
 
@@ -330,7 +332,7 @@ namespace MG.GIF
 
                         if( prev?.RawImage != null )
                         {
-                            OutputBuffer = prev.RawImage.Clone() as Color[];
+                            OutputBuffer = prev.RawImage.Clone() as Color32[];
                         }
                     }
                     break;
@@ -344,7 +346,7 @@ namespace MG.GIF
 
                         if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
                         {
-                            OutputBuffer = prev.RawImage.Clone() as Color[];
+                            OutputBuffer = prev.RawImage.Clone() as Color32[];
                             break;
                         }
                     }
@@ -358,7 +360,7 @@ namespace MG.GIF
 
             if( OutputBuffer == null )
             {
-                OutputBuffer = Enumerable.Repeat( Color.clear, Images.Width * Images.Height ).ToArray();
+                OutputBuffer = Enumerable.Repeat( ClearColour, Images.Width * Images.Height ).ToArray();
             }
 
             // create image
@@ -431,8 +433,8 @@ namespace MG.GIF
         int LzwMaximumCodeSize;
         Dictionary<int, List<ushort>> LzwCodeTable;
 
-        int     PixelNum;
-        Color[] OutputBuffer;
+        int         PixelNum;
+        Color32[]   OutputBuffer;
 
         private static int ReadNextCode( BitArray array, int offset, int codeSize )
         {
@@ -467,7 +469,7 @@ namespace MG.GIF
 
                 if( code == TransparentIndex )
                 {
-                    OutputBuffer[index] = Color.clear;
+                    OutputBuffer[index] = ClearColour;
                 }
                 else
                 {
@@ -488,7 +490,7 @@ namespace MG.GIF
                 );
         }
 
-        private Color[] DecompressLZW( byte[] lzwData )
+        private Color32[] DecompressLZW( byte[] lzwData )
         {
             LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
             LzwClearCode       = LzwMaximumCodeSize;

@@ -232,7 +232,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Filename: cat.gif
-  Tex: {fileID: 2800000, guid: 3f6b6a659e0c5b748a58680377a05325, type: 3}
 --- !u!1 &692083335
 GameObject:
   m_ObjectHideFlags: 0
@@ -341,8 +340,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6df2e19a1afcb884f9efc5d949ed84b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Filename: 
-  Tex: {fileID: 0}
+  Filename: jellyfish.gif
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -626,5 +624,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6df2e19a1afcb884f9efc5d949ed84b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Filename: 
-  Tex: {fileID: 0}
+  Filename: butterfly.gif

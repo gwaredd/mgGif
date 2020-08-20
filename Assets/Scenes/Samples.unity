@@ -232,6 +232,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Filename: cat.gif
+  Tex: {fileID: 2800000, guid: 3f6b6a659e0c5b748a58680377a05325, type: 3}
 --- !u!1 &692083335
 GameObject:
   m_ObjectHideFlags: 0
@@ -341,6 +342,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Filename: 
+  Tex: {fileID: 0}
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -625,3 +627,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Filename: 
+  Tex: {fileID: 0}

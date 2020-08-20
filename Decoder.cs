@@ -247,7 +247,7 @@ namespace MG.GIF
         {
             var output   = new Color32[ input.Length ];
             var numRows  = input.Length / width;
-            var writePos = 0;
+            var writePos = input.Length - width; // NB: work backwards due to Y-coord flip
 
             for( var row = 0; row < numRows; row++ )
             {
@@ -277,8 +277,8 @@ namespace MG.GIF
                     copyRow = o + ( row - 1 ) / 2;
                 }
 
-                Array.Copy( input, copyRow * width, output, writePos, width );
-                writePos += width;
+                Array.Copy( input, ( numRows - copyRow - 1 ) * width, output, writePos, width );
+                writePos -= width;
             }
 
             return output;
@@ -465,7 +465,9 @@ namespace MG.GIF
 
             if( row < Images.Height && col < Images.Width )
             {
-                var index = row * Images.Width + col;
+                // reverse row (flip in Y) because gif coordinates start at the top-left (unity is bottom-left)
+
+                var index = ( Images.Height - row - 1 ) * Images.Width + col;
 
                 if( code != TransparentIndex )
                 {

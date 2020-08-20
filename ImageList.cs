@@ -16,6 +16,24 @@ namespace MG.GIF
         public Color32[] RawImage;
         public ushort    Delay;
         public Disposal  DisposalMethod = Disposal.None;
+
+        protected ImageList mGif;
+
+        public Image( ImageList gif )
+        {
+            mGif = gif;
+        }
+
+        public Texture2D CreateTexture()
+        {
+            var tex = new Texture2D( mGif.Width, mGif.Height, TextureFormat.ARGB32, false );
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode   = TextureWrapMode.Clamp;
+            tex.SetPixels32( RawImage );
+            tex.Apply();
+
+            return tex;
+        }
     }
 
     public class ImageList
@@ -35,6 +53,24 @@ namespace MG.GIF
         public Image GetImage( int index )
         {
             return index < Images.Count ? Images[index] : null;
+        }
+
+        public int NumFrames
+        {
+            get
+            {
+                int count = 0;
+
+                foreach( var img in Images )
+                {
+                    if( img.Delay > 0 )
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
         }
 
         public Image GetFrame( int index )

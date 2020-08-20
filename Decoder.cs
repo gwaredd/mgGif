@@ -365,7 +365,7 @@ namespace MG.GIF
 
             // create image
 
-            var img = new Image();
+            var img = new Image( Images );
 
             img.Delay          = ControlDelay;
             img.DisposalMethod = ControlDispose;
@@ -467,11 +467,7 @@ namespace MG.GIF
             {
                 var index = row * Images.Width + col;
 
-                if( code == TransparentIndex )
-                {
-                    OutputBuffer[index] = ClearColour;
-                }
-                else
+                if( code != TransparentIndex )
                 {
                     OutputBuffer[index] = code < ActiveColourTable.Length ? ActiveColourTable[code] : BackgroundColour;
                 }

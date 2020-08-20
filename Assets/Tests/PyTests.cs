@@ -87,7 +87,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // compare output against reference image
 
-        private void ValidatePixels( Image frame, string referenceFile )
+        private void ValidatePixels( ImageList gif, Image frame, string referenceFile )
         {
             if( frame == null && referenceFile == "transparent-dot.rgba" )
             {
@@ -117,10 +117,17 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            for( var i = 0; i < colours.Length; i++ )
+            for( var y = 0; y < gif.Height; y++ )
             {
-                //Debug.Log( i );
-                Assert.AreEqual( colours[i], frame.RawImage[i] );
+                for( var x = 0; x < gif.Width; x++ )
+                {
+                    // note that colours are flipped in Y as gif texture coordinates are top-left (unity is bottom-left)
+
+                    var i = y * gif.Width + x;
+                    var j = ( gif.Height - y - 1 ) * gif.Width + x;
+
+                    Assert.AreEqual( colours[i], frame.RawImage[j] );
+                }
             }
         }
 
@@ -154,7 +161,7 @@ namespace MG.GIF
 
                 if( kv[1] == "pixels" )
                 {
-                    ValidatePixels( frame, Get( key ) );
+                    ValidatePixels( data, frame, Get( key ) );
                 }
                 else if( kv[1] == "delay" )
                 {

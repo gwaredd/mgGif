@@ -27,6 +27,11 @@ namespace MG.GIF
 
         public List<Image> Images = new List<Image>();
 
+        public void Add( Image img )
+        {
+            Images.Add( img );
+        }
+
         public Image GetImage( int index )
         {
             return index < Images.Count ? Images[index] : null;

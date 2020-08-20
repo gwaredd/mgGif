@@ -3,7 +3,6 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Collections;
-using System.Linq;
 
 namespace MG.GIF
 {
@@ -360,7 +359,14 @@ namespace MG.GIF
 
             if( OutputBuffer == null )
             {
-                OutputBuffer = Enumerable.Repeat( ClearColour, Images.Width * Images.Height ).ToArray();
+                var size = Images.Width * Images.Height;
+
+                OutputBuffer = new Color32[size];
+
+                for( int i=0; i < size; i++ )
+                {
+                    OutputBuffer[i] = ClearColour;
+                }
             }
 
             // create image
@@ -480,12 +486,14 @@ namespace MG.GIF
 
         private void ClearCodeTable()
         {
-            LzwCodeSize = LzwMinimumCodeSize + 1;
-            LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
-            LzwCodeTable = Enumerable.Range( 0, LzwMaximumCodeSize + 2 ).ToDictionary(
-                    i => i,
-                    i => new List<ushort>() { (ushort) i }
-                );
+            LzwCodeSize  = LzwMinimumCodeSize + 1;
+            LzwNextSize  = (int) Math.Pow( 2, LzwCodeSize );
+            LzwCodeTable = new Dictionary<int, List<ushort>>();
+
+            for( ushort i=0; i < LzwMaximumCodeSize + 2; i++ )
+            {
+                LzwCodeTable[i] = new List<ushort>() { i };
+            }
         }
 
         private Color32[] DecompressLZW( byte[] lzwData )

@@ -10,7 +10,7 @@ namespace MG.GIF
     public class Decoder
     {
         [Flags]
-        private enum Flag
+        private enum ImageFlag
         {
             Interlaced    = 0x40,
             ColourTable   = 0x80,
@@ -33,22 +33,27 @@ namespace MG.GIF
             ApplicationData = 0xFF
         }
 
-        ImageList Images;
+        private ImageList   Images;
 
-        public  Color[]     GlobalColourTable = null;
-        public  Color       BackgroundColour  = Color.black;
-        public  byte        BackgroundIndex   = 0xFF;
-        public  ushort      TransparentIndex  = 0xFFFF;
+        // colour
+        private Color[]     GlobalColourTable = null;
+        private Color[]     ActiveColourTable;
+        private Color       BackgroundColour  = Color.black;
+        private byte        BackgroundIndex   = 0xFF;
+        private ushort      TransparentIndex  = 0xFFFF;
 
+        // current controls
         private ushort      ControlDelay      = 0;
-        public  Disposal    ControlDispose    = Disposal.None;
+        private Disposal    ControlDispose    = Disposal.None;
 
-        public ushort   ImageLeft;
-        public ushort   ImageTop;
-        public ushort   ImageWidth;
-        public ushort   ImageHeight;
-        public bool     ImageInterlaced;
-        public byte     LzwMinimumCodeSize;
+        // current image
+        private ushort      ImageLeft;
+        private ushort      ImageTop;
+        private ushort      ImageWidth;
+        private ushort      ImageHeight;
+        private ImageFlag   ImageFlags;
+        private bool        ImageInterlaced;
+        private byte        LzwMinimumCodeSize;
 
 
         //------------------------------------------------------------------------------
@@ -88,17 +93,17 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private Color[] ReadColourTable( Flag flags, BinaryReader r )
+        private Color[] ReadColourTable( ImageFlag flags, BinaryReader r )
         {
-            var tableSize   = (int) Math.Pow( 2, (int)( flags & Flag.TableSizeMask ) + 1 );
+            var tableSize   = (int) Math.Pow( 2, (int)( flags & ImageFlag.TableSizeMask ) + 1 );
             var colourTable = new Color[ tableSize ];
 
             for( var i = 0; i < tableSize; i++ )
             {
                 colourTable[i] = new Color(
-                      r.ReadByte() / 255.0f,
-                      r.ReadByte() / 255.0f,
-                      r.ReadByte() / 255.0f
+                    r.ReadByte() / 255.0f,
+                    r.ReadByte() / 255.0f,
+                    r.ReadByte() / 255.0f
                 );
             }
 
@@ -122,15 +127,15 @@ namespace MG.GIF
 
             Images.Width    = r.ReadUInt16();
             Images.Height   = r.ReadUInt16();
-            var flags       = (Flag) r.ReadByte();
+            ImageFlags      = (ImageFlag) r.ReadByte();
             BackgroundIndex = r.ReadByte();
             r.ReadByte(); // aspect ratio
 
-            Images.BitDepth = (int) ( flags & Flag.BitDepthMask ) >> 4 + 1;
+            Images.BitDepth = (int) ( ImageFlags & ImageFlag.BitDepthMask ) >> 4 + 1;
 
-            if( flags.HasFlag( Flag.ColourTable ) )
+            if( ImageFlags.HasFlag( ImageFlag.ColourTable ) )
             {
-                GlobalColourTable = ReadColourTable( flags, r );
+                GlobalColourTable = ReadColourTable( ImageFlags, r );
 
                 if( BackgroundIndex < GlobalColourTable.Length )
                 {
@@ -238,99 +243,96 @@ namespace MG.GIF
 
         protected Color[] Deinterlace( Color[] input, int width )
         {
-            var output = new Color[ input.Length ];
+            var output   = new Color[ input.Length ];
+            var numRows  = input.Length / width;
+            var writePos = 0;
 
-            var numRows = input.Length / width;
-
-            var rows = new int[ numRows ];
-
-            for( var r = 0; r < numRows; r++ )
+            for( var row = 0; row < numRows; row++ )
             {
+                var copyRow = 0;
+
                 // every 8th row starting at 0
-                if( r % 8 == 0 )
+                if( row % 8 == 0 )
                 {
-                    rows[r] = r / 8;
+                    copyRow = row / 8;
                 }
                 // every 8th row starting at 4
-                else if( ( r + 4 ) % 8 == 0 )
+                else if( ( row + 4 ) % 8 == 0 )
                 {
                     var o = numRows / 8;
-                    rows[r] = o + ( r - 4 ) / 8;
+                    copyRow = o + ( row - 4 ) / 8;
                 }
                 // every 4th row starting at 2
-                else if( ( r + 2 ) % 4 == 0 )
+                else if( ( row + 2 ) % 4 == 0 )
                 {
                     var o = numRows / 4;
-                    rows[r] = o + ( r - 2 ) / 4;
+                    copyRow = o + ( row - 2 ) / 4;
                 }
                 // every 2nd row starting at 1
                 else // if( ( r + 1 ) % 2 == 0 )
                 {
                     var o = numRows / 2;
-                    rows[r] = o + ( r - 1 ) / 2;
+                    copyRow = o + ( row - 1 ) / 2;
                 }
-            }
 
-            int writePos=0;
-
-            foreach( var row in rows )
-            {
-                Array.Copy( input, row * width, output, writePos, width );
+                Array.Copy( input, copyRow * width, output, writePos, width );
                 writePos += width;
             }
 
             return output;
         }
 
+        //------------------------------------------------------------------------------
+
         protected void ReadImageBlock( BinaryReader r )
         {
-            var img = new Image();
+            // read image block header
 
-            ImageLeft          = r.ReadUInt16();
-            ImageTop           = r.ReadUInt16();
-            ImageWidth         = r.ReadUInt16();
-            ImageHeight        = r.ReadUInt16();
-            img.Delay          = ControlDelay;
-            img.DisposalMethod = ControlDispose;
-
-            var flags = (Flag) r.ReadByte();
-            ImageInterlaced = flags.HasFlag( Flag.Interlaced );
+            ImageLeft       = r.ReadUInt16();
+            ImageTop        = r.ReadUInt16();
+            ImageWidth      = r.ReadUInt16();
+            ImageHeight     = r.ReadUInt16();
+            ImageFlags      = (ImageFlag) r.ReadByte();
+            ImageInterlaced = ImageFlags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
             {
                 return;
             }
 
-            Color[] colourTable = null;
-
-            if( flags.HasFlag( Flag.ColourTable ) )
+            if( ImageFlags.HasFlag( ImageFlag.ColourTable ) )
             {
-                colourTable = ReadColourTable( flags, r );
+                ActiveColourTable = ReadColourTable( ImageFlags, r );
             }
-
-            ColourTable = colourTable ?? GlobalColourTable;
+            else
+            {
+                ActiveColourTable = GlobalColourTable;
+            }
 
             LzwMinimumCodeSize = r.ReadByte();
 
-            var data = ReadImageBlocks( r );
 
-            // copy background colour?
-            Color[] prevImg = null;
+            // compressed image data
+
+            var lzwData = ReadImageBlocks( r );
+
+
+            // this disposal method determines whether we start with a previous image
+
+            OutputBuffer = null;
 
             switch( ControlDispose )
             {
                 case Disposal.None:
                 case Disposal.DoNotDispose:
-
                     {
                         var prev = Images.Images.Count > 0 ? Images.Images[ Images.Images.Count - 1 ] : null;
 
                         if( prev?.RawImage != null )
                         {
-                            prevImg = prev.RawImage;
+                            OutputBuffer = prev.RawImage.Clone() as Color[];
                         }
                     }
-
                     break;
 
 
@@ -342,7 +344,7 @@ namespace MG.GIF
 
                         if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
                         {
-                            prevImg = prev.RawImage;
+                            OutputBuffer = prev.RawImage.Clone() as Color[];
                             break;
                         }
                     }
@@ -354,14 +356,25 @@ namespace MG.GIF
                     break;
             }
 
-            img.RawImage = Decompress( data, img, prevImg );
+            if( OutputBuffer == null )
+            {
+                OutputBuffer = Enumerable.Repeat( Color.clear, Images.Width * Images.Height ).ToArray();
+            }
+
+            // create image
+
+            var img = new Image();
+
+            img.Delay          = ControlDelay;
+            img.DisposalMethod = ControlDispose;
+            img.RawImage       = DecompressLZW( lzwData );
 
             if( ImageInterlaced )
             {
                 img.RawImage = Deinterlace( img.RawImage, ImageWidth );
             }
 
-            Images.Images.Add( img );
+            Images.Add( img );
         }
 
 
@@ -409,20 +422,17 @@ namespace MG.GIF
         }
 
         //------------------------------------------------------------------------------
+        // LZW
 
         int LzwClearCode;
         int LzwEndCode;
         int LzwCodeSize;
         int LzwNextSize;
         int LzwMaximumCodeSize;
-        ushort TransparentColour;
-
-        Color Background;
-        Color[] ColourTable;
-        Color[] Output;
-        int PixelNum;
-
         Dictionary<int, List<ushort>> LzwCodeTable;
+
+        int     PixelNum;
+        Color[] OutputBuffer;
 
         private static int ReadNextCode( BitArray array, int offset, int codeSize )
         {
@@ -446,30 +456,27 @@ namespace MG.GIF
             return v;
         }
 
-        public Color GetColour( ushort code )
+        private void WritePixel( ushort code )
         {
-            if( code == TransparentColour )
-            {
-                return Color.clear;
-            }
-
-            return code < ColourTable.Length ? ColourTable[code] : Background;
-        }
-
-        public void Write( ushort code )
-        {
-            var row = ImageTop + PixelNum / ImageWidth;
+            var row = ImageTop  + PixelNum / ImageWidth;
             var col = ImageLeft + PixelNum % ImageWidth;
 
             if( row < Images.Height && col < Images.Width )
             {
                 var index = row * Images.Width + col;
-                Output[index] = GetColour( code );
+
+                if( code == TransparentIndex )
+                {
+                    OutputBuffer[index] = Color.clear;
+                }
+                else
+                {
+                    OutputBuffer[index] = code < ActiveColourTable.Length ? ActiveColourTable[code] : BackgroundColour;
+                }
             }
 
             PixelNum++;
         }
-
 
         private void ClearCodeTable()
         {
@@ -481,41 +488,29 @@ namespace MG.GIF
                 );
         }
 
-        public Color[] Decompress( byte[] data, Image img, Color[] prevImg )
+        private Color[] DecompressLZW( byte[] lzwData )
         {
             LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
             LzwClearCode       = LzwMaximumCodeSize;
             LzwEndCode         = LzwClearCode + 1;
 
-            TransparentColour = TransparentIndex;
-            Background = BackgroundColour;
-
             ClearCodeTable();
 
-            var input = new BitArray( data );
-
-            // copy background colour?
-
-            if( prevImg != null )
-            {
-                Output = prevImg.Clone() as Color[];
-            }
-            else
-            {
-                Output = Enumerable.Repeat( Color.clear, Images.Width * Images.Height ).ToArray();
-            }
-
-            PixelNum = 0;
+            var bits = new BitArray( lzwData );
 
             // LZW decode loop
 
-            var position = 0;
+            PixelNum = 0;
+
+            var bitPosition  = 0;
             var previousCode = -1;
 
-            while( position < input.Length )
+            while( bitPosition < bits.Length )
             {
-                int curCode = ReadNextCode( input, position, LzwCodeSize );
-                position += LzwCodeSize;
+                // get next code
+
+                int curCode = ReadNextCode( bits, bitPosition, LzwCodeSize );
+                bitPosition += LzwCodeSize;
 
                 if( curCode == LzwClearCode )
                 {
@@ -533,14 +528,14 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        Write( code );
+                        WritePixel( code );
                     }
 
                     if( previousCode >= 0 )
                     {
                         var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
                         newCodes.Add( codes[0] );
-                        LzwCodeTable[LzwCodeTable.Count] = newCodes;
+                        LzwCodeTable[ LzwCodeTable.Count ] = newCodes;
                     }
                 }
                 else if( curCode >= LzwCodeTable.Count )
@@ -554,14 +549,14 @@ namespace MG.GIF
 
                     foreach( var code in codes )
                     {
-                        Write( code );
+                        WritePixel( code );
                     }
 
-                    Write( codes[0] );
+                    WritePixel( codes[0] );
 
                     var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
                     newCodes.Add( codes[0] );
-                    LzwCodeTable[LzwCodeTable.Count] = newCodes;
+                    LzwCodeTable[ LzwCodeTable.Count ] = newCodes;
                 }
                 else
                 {
@@ -569,12 +564,9 @@ namespace MG.GIF
                     continue;
                 }
 
-                if( PixelNum >= Output.Length )
-                {
-                    break;
-                }
-
                 previousCode = curCode;
+
+                // increase code size?
 
                 if( LzwCodeTable.Count >= LzwNextSize && LzwCodeSize < 12 )
                 {
@@ -583,8 +575,7 @@ namespace MG.GIF
                 }
             }
 
-            return Output;
+            return OutputBuffer;
         }
-
     }
 }

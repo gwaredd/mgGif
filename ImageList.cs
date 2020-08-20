@@ -13,9 +13,9 @@ namespace MG.GIF
 
     public class Image
     {
-        public Color[]  RawImage;
-        public ushort   Delay;
-        public Disposal DisposalMethod = Disposal.None;
+        public Color32[] RawImage;
+        public ushort    Delay;
+        public Disposal  DisposalMethod = Disposal.None;
     }
 
     public class ImageList

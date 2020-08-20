@@ -175,7 +175,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 98029e5bcbdd8844ab6ae235401cf3b5, type: 2}
+  - {fileID: 2100000, guid: ab5f472743a225449a8746bed51615d2, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -284,7 +284,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a1bc29a8bfa13ad4da6bddcf3f7b3bad, type: 2}
+  - {fileID: 2100000, guid: ab5f472743a225449a8746bed51615d2, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -340,7 +340,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6df2e19a1afcb884f9efc5d949ed84b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Filename: jellyfish.gif
+  Filename: 
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -568,7 +568,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 3271312e831f6394b983889b1d438158, type: 2}
+  - {fileID: 2100000, guid: ab5f472743a225449a8746bed51615d2, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -624,4 +624,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6df2e19a1afcb884f9efc5d949ed84b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Filename: butterfly.gif
+  Filename: 

@@ -30,6 +30,9 @@ namespace MG.GIF
             return Config.ContainsKey( key ) ? Config[key] : null;
         }
 
+        //--------------------------------------------------------------------------------
+        // read config file
+
         public TestConfig( string dir, string file )
         {
             Dir = dir;
@@ -82,6 +85,7 @@ namespace MG.GIF
         }
 
         //--------------------------------------------------------------------------------
+        // compare output against reference image
 
         private void ValidatePixels( Image frame, string referenceFile )
         {
@@ -121,6 +125,7 @@ namespace MG.GIF
         }
 
         //--------------------------------------------------------------------------------
+        // check frame against config values
 
         private void ValidateFrame( int frameIndex, string frameName, ImageList data )
         {
@@ -168,11 +173,16 @@ namespace MG.GIF
         }
 
         //--------------------------------------------------------------------------------
+        // test config values
 
         public void Run()
         {
+            // read input gif
+
             var bytes = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
             var gif   = Decoder.Parse( bytes );
+
+            // compare results
 
             foreach( var key in Config.Keys )
             {
@@ -183,16 +193,18 @@ namespace MG.GIF
 
                 switch( key )
                 {
-                    case "input": // test gif for input
+                    case "input":
+                        // test gif for input
                         break;
 
-                    case "comment": // plain text extension
-                    case "xmp-data": // XMP data extension
+                    case "comment":       // plain text extension
+                    case "xmp-data":      // XMP data extension
                     case "color-profile": // ICC colour profile extension
+                        // ignore
                         break;
 
-                    // Netscape or Animation extension
-                    case "buffer-size": // size of buffer before playing
+                                            // Netscape or Animation extension
+                    case "buffer-size":     // size of buffer before playing
                     case "force-animation": // default to true
                         // ignore
                         break;

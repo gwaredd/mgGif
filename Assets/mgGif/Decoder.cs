@@ -448,9 +448,10 @@ namespace MG.GIF
         int LzwCodeSize;
         int LzwNextSize;
         int LzwMaximumCodeSize;
-        Dictionary<int, List<ushort>> LzwCodeTable;
 
-        //List<ushort>[] LzwCodeTable = new List<ushort>[ 4096 ]; // max code size = 12, 2^12 = 4096
+        //Dictionary<int, List<ushort>> LzwCodeTable;
+        int LzwCodeTableSize = 0;
+        List<ushort>[] LzwCodeTable;
 
         int         PixelNum;
         Color32[]   OutputBuffer;
@@ -500,14 +501,9 @@ namespace MG.GIF
 
         private void ClearCodeTable()
         {
-            LzwCodeSize  = LzwMinimumCodeSize + 1;
-            LzwNextSize  = (int) Math.Pow( 2, LzwCodeSize );
-            LzwCodeTable = new Dictionary<int, List<ushort>>();
-
-            for( ushort i=0; i < LzwMaximumCodeSize + 2; i++ )
-            {
-                LzwCodeTable[i] = new List<ushort>() { i };
-            }
+            LzwCodeSize      = LzwMinimumCodeSize + 1;
+            LzwNextSize      = (int) Math.Pow( 2, LzwCodeSize );
+            LzwCodeTableSize = LzwMaximumCodeSize + 2;
         }
 
         private Color32[] DecompressLZW( byte[] lzwData )
@@ -515,6 +511,14 @@ namespace MG.GIF
             LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
             LzwClearCode       = LzwMaximumCodeSize;
             LzwEndCode         = LzwClearCode + 1;
+
+            LzwCodeTableSize = LzwMaximumCodeSize + 2;
+            LzwCodeTable     = new List<ushort>[ 4098 ]; // 2^12 + 2
+
+            for( ushort i = 0; i < LzwCodeTableSize; i++ )
+            {
+                LzwCodeTable[i] = new List<ushort>() { i };
+            }
 
             ClearCodeTable();
 
@@ -570,7 +574,7 @@ namespace MG.GIF
 
                 int curCode = (int)( ( shiftRegister & 0x0000FFFF ) >> ( 16 - LzwCodeSize ) );
 
-                //
+                // process code
 
                 if( curCode == LzwClearCode )
                 {
@@ -582,7 +586,7 @@ namespace MG.GIF
                 {
                     break;
                 }
-                else if( LzwCodeTable.ContainsKey( curCode ) )
+                else if( curCode < LzwCodeTableSize )
                 {
                     var codes = LzwCodeTable[ curCode ];
 
@@ -591,14 +595,14 @@ namespace MG.GIF
                         WritePixel( code );
                     }
 
-                    if( previousCode >= 0 )
+                    if( previousCode >= 0 && LzwCodeTableSize != LzwCodeTable.Length )
                     {
                         var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
                         newCodes.Add( codes[0] );
-                        LzwCodeTable[ LzwCodeTable.Count ] = newCodes;
+                        LzwCodeTable[ LzwCodeTableSize++ ] = newCodes;
                     }
                 }
-                else if( curCode >= LzwCodeTable.Count )
+                else
                 {
                     if( previousCode < 0 )
                     {
@@ -616,19 +620,14 @@ namespace MG.GIF
 
                     var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
                     newCodes.Add( codes[0] );
-                    LzwCodeTable[ LzwCodeTable.Count ] = newCodes;
-                }
-                else
-                {
-                    UnityEngine.Debug.LogWarning( $"Unexpected code {curCode}" );
-                    continue;
+                    LzwCodeTable[ LzwCodeTableSize++ ] = newCodes;
                 }
 
                 previousCode = curCode;
 
                 // increase code size?
 
-                if( LzwCodeTable.Count >= LzwNextSize && LzwCodeSize < 12 )
+                if( LzwCodeTableSize >= LzwNextSize && LzwCodeSize < 12 )
                 {
                     LzwCodeSize++;
                     LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );

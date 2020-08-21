@@ -508,6 +508,8 @@ namespace MG.GIF
 
         private Color32[] DecompressLZW( byte[] lzwData )
         {
+            LzwCodeSize        = LzwMinimumCodeSize + 1;
+            LzwNextSize        = (int) Math.Pow( 2, LzwCodeSize );
             LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
             LzwClearCode       = LzwMaximumCodeSize;
             LzwEndCode         = LzwClearCode + 1;
@@ -576,10 +578,16 @@ namespace MG.GIF
 
                 // process code
 
+                List<ushort> codes = null;
+                ushort extraCode = 0xFFFF;
+
                 if( curCode == LzwClearCode )
                 {
-                    ClearCodeTable();
-                    previousCode = -1;
+                    // clear code table
+                    LzwCodeSize      = LzwMinimumCodeSize + 1;
+                    LzwNextSize      = (int) Math.Pow( 2, LzwCodeSize );
+                    LzwCodeTableSize = LzwMaximumCodeSize + 2;
+                    previousCode     = -1;
                     continue;
                 }
                 else if( curCode == LzwEndCode )
@@ -588,42 +596,38 @@ namespace MG.GIF
                 }
                 else if( curCode < LzwCodeTableSize )
                 {
-                    var codes = LzwCodeTable[ curCode ];
-
-                    foreach( var code in codes )
-                    {
-                        WritePixel( code );
-                    }
-
-                    if( previousCode >= 0 && LzwCodeTableSize != LzwCodeTable.Length )
-                    {
-                        var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
-                        newCodes.Add( codes[0] );
-                        LzwCodeTable[ LzwCodeTableSize++ ] = newCodes;
-                    }
+                    codes = LzwCodeTable[ curCode ];
+                }
+                else if( previousCode >= 0 )
+                {
+                    codes = LzwCodeTable[ previousCode ];
+                    extraCode = codes[0];
                 }
                 else
                 {
-                    if( previousCode < 0 )
-                    {
-                        continue;
-                    }
-
-                    var codes = LzwCodeTable[ previousCode ];
-
-                    foreach( var code in codes )
-                    {
-                        WritePixel( code );
-                    }
-
-                    WritePixel( codes[0] );
-
-                    var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
-                    newCodes.Add( codes[0] );
-                    LzwCodeTable[ LzwCodeTableSize++ ] = newCodes;
+                    continue;
                 }
 
-                previousCode = curCode;
+                // output colours
+
+                foreach( var code in codes )
+                {
+                    WritePixel( code );
+                }
+
+                if( extraCode != 0xFFFF )
+                {
+                    WritePixel( extraCode );
+                }
+
+                // create new code
+
+                if( previousCode >= 0 && LzwCodeTableSize != LzwCodeTable.Length )
+                {
+                    var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
+                    newCodes.Add( codes[0] );
+                    LzwCodeTable[LzwCodeTableSize++] = newCodes;
+                }
 
                 // increase code size?
 
@@ -632,6 +636,9 @@ namespace MG.GIF
                     LzwCodeSize++;
                     LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
                 }
+
+                // next
+                previousCode = curCode;
             }
 
             return OutputBuffer;

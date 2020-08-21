@@ -4,6 +4,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Collections;
 using UnityEngine.Profiling;
+using System.Diagnostics;
 
 namespace MG.GIF
 {
@@ -12,24 +13,24 @@ namespace MG.GIF
         [Flags]
         private enum ImageFlag
         {
-            Interlaced    = 0x40,
-            ColourTable   = 0x80,
+            Interlaced = 0x40,
+            ColourTable = 0x80,
             TableSizeMask = 0x07,
-            BitDepthMask  = 0x70,
+            BitDepthMask = 0x70,
         }
 
         private enum Block
         {
-            Image     = 0x2C,
+            Image = 0x2C,
             Extension = 0x21,
-            End       = 0x3B
+            End = 0x3B
         }
 
         private enum Extension
         {
-            GraphicControl  = 0xF9,
-            Comments        = 0xFE,
-            PlainText       = 0x01,
+            GraphicControl = 0xF9,
+            Comments = 0xFE,
+            PlainText = 0x01,
             ApplicationData = 0xFF
         }
 
@@ -66,7 +67,7 @@ namespace MG.GIF
             }
             catch( Exception e )
             {
-                Debug.Log( e.Message );
+                UnityEngine.Debug.Log( e.Message );
                 return null;
             }
         }
@@ -126,9 +127,9 @@ namespace MG.GIF
 
             // read header
 
-            Images.Width    = r.ReadUInt16();
-            Images.Height   = r.ReadUInt16();
-            ImageFlags      = (ImageFlag) r.ReadByte();
+            Images.Width = r.ReadUInt16();
+            Images.Height = r.ReadUInt16();
+            ImageFlags = (ImageFlag) r.ReadByte();
             var bgIndex     = r.ReadByte();
             r.ReadByte(); // aspect ratio
 
@@ -290,11 +291,11 @@ namespace MG.GIF
         {
             // read image block header
 
-            ImageLeft       = r.ReadUInt16();
-            ImageTop        = r.ReadUInt16();
-            ImageWidth      = r.ReadUInt16();
-            ImageHeight     = r.ReadUInt16();
-            ImageFlags      = (ImageFlag) r.ReadByte();
+            ImageLeft = r.ReadUInt16();
+            ImageTop = r.ReadUInt16();
+            ImageWidth = r.ReadUInt16();
+            ImageHeight = r.ReadUInt16();
+            ImageFlags = (ImageFlag) r.ReadByte();
             ImageInterlaced = ImageFlags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
@@ -340,7 +341,7 @@ namespace MG.GIF
 
                 case Disposal.ReturnToPrevious:
 
-                    for( int i= Images.Images.Count - 1; i >= 0; i-- )
+                    for( int i = Images.Images.Count - 1; i >= 0; i-- )
                     {
                         var prev = Images.Images[ i ];
 
@@ -364,7 +365,7 @@ namespace MG.GIF
 
                 OutputBuffer = new Color32[size];
 
-                for( int i=0; i < size; i++ )
+                for( int i = 0; i < size; i++ )
                 {
                     OutputBuffer[i] = ClearColour;
                 }
@@ -374,9 +375,18 @@ namespace MG.GIF
 
             var img = new Image( Images );
 
-            img.Delay          = ControlDelay;
+            img.Delay = ControlDelay;
             img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW( lzwData );
+
+
+
+            //var s = Sampler.Get( "DecompressLZW" );
+
+            var sw = new Stopwatch();
+            sw.Start();
+            img.RawImage = DecompressLZW( lzwData );
+            sw.Stop();
+            UnityEngine.Debug.Log( sw.ElapsedTicks );
 
             if( ImageInterlaced )
             {
@@ -440,10 +450,13 @@ namespace MG.GIF
         int LzwMaximumCodeSize;
         Dictionary<int, List<ushort>> LzwCodeTable;
 
+        //List<ushort>[] LzwCodeTable = new List<ushort>[ 4096 ]; // max code size = 12, 2^12 = 4096
+
         int         PixelNum;
         Color32[]   OutputBuffer;
 
-        private static int ReadNextCode( BitArray array, int offset, int codeSize )
+
+        private int ReadNextCode( BitArray array, int offset, int codeSize )
         {
             // NB: do we need to account for endianess?
 
@@ -505,79 +518,57 @@ namespace MG.GIF
 
             ClearCodeTable();
 
-            var bits = new BitArray( lzwData );
-
             // LZW decode loop
 
             PixelNum = 0;
 
-            var bitPosition  = 0;
-            var previousCode = -1;
+            int previousCode = -1;
 
-            int bitsAvailable = 0;
-            int readPos = 0;
-            uint bin = 0;
+            int bitsAvailable  = 0;
+            int readPos        = 0;
+            uint shiftRegister = 0;
 
-            while( bitPosition < bits.Length )
+            while( readPos != lzwData.Length || bitsAvailable > 0 )
             {
                 // get next code
 
+                int bitsToRead = LzwCodeSize;
 
-                //Profiler.BeginSample( "next_code_a" );
-                //ReadNextCode( bits, bitPosition, LzwCodeSize );
-                //int curCode = ReadNextCode( bits, bitPosition, LzwCodeSize );
-                //bitPosition += LzwCodeSize;
-                //Profiler.EndSample();
+                // consume any existing bits
 
-                uint codex = 0;
-                int require = LzwCodeSize;
-                bool stop = false;
-
-                Profiler.BeginSample( "next_code_b" );
-
-                while( require > 0 )
+                if( bitsAvailable > 0 )
                 {
-                    if( bitsAvailable == 0 )
-                    {
-                        if( readPos < lzwData.Length )
-                        {
-                            var a = (uint) lzwData[readPos++] << 16;
-                            bin = a | bin;
-                            bitsAvailable += 8;
-
-                            if( readPos < lzwData.Length )
-                            {
-                                var b = (uint) lzwData[readPos++] << 24;
-                                bin = b | bin;
-                                bitsAvailable += 8;
-                            }
-                        }
-                    }
-
-                    if( bitsAvailable == 0 )
-                    {
-                        stop = true;
-                        break;
-                    }
-
-                    var r = Mathf.Min( require, bitsAvailable );
-
-                    bin = bin >> r;
-                    bitsAvailable -= r;
-                    require -= r;
+                    var numBits = Mathf.Min( bitsToRead, bitsAvailable );
+                    shiftRegister = shiftRegister >> numBits;
+                    bitsToRead -= numBits;
+                    bitsAvailable -= numBits;
                 }
 
-                Profiler.EndSample();
+                // load up new bits
 
-                if( stop  )
+                if( bitsAvailable == 0 )
                 {
-                    break;
+                    if( readPos < lzwData.Length - 1 )
+                    {
+                        shiftRegister |= ( (uint) lzwData[readPos++] << 16 ) | ( (uint) lzwData[readPos++] << 24 );
+                        bitsAvailable = 16;
+                    }
+                    else if( readPos < lzwData.Length )
+                    {
+                        shiftRegister |= (uint) lzwData[readPos++] << 16;
+                        bitsAvailable = 8;
+                    }
                 }
 
+                // consume any remaining bits
 
-                codex = ( bin & 0x0000FFFF ) >> ( 16 - LzwCodeSize );
+                if( bitsToRead > 0 )
+                {
+                    shiftRegister = shiftRegister >> bitsToRead;
+                    bitsAvailable -= bitsToRead;
+                }
 
-                int curCode = (int) codex;
+                int curCode = (int)( ( shiftRegister & 0x0000FFFF ) >> ( 16 - LzwCodeSize ) );
 
                 //
 
@@ -629,7 +620,7 @@ namespace MG.GIF
                 }
                 else
                 {
-                    Debug.LogWarning( $"Unexpected code {curCode}" );
+                    UnityEngine.Debug.LogWarning( $"Unexpected code {curCode}" );
                     continue;
                 }
 

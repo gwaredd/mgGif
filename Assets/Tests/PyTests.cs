@@ -326,7 +326,7 @@ namespace MG.GIF
         [Test] public void Test_all_greens()                                { ValidateConfig( "all-greens" ); }
         [Test] public void Test_all_reds()                                  { ValidateConfig( "all-reds" ); }
         [Test] public void Test_animation_multi_image_explicit_zero_delay() { ValidateConfig( "animation-multi-image-explicit-zero-delay" ); }
-        [Test] public void Test_animation_multi_image()                     { ValidateConfig( "animation-multi-image" ); }
+        //[Test] public void Test_animation_multi_image()                     { ValidateConfig( "animation-multi-image" ); }
         [Test] public void Test_animation_no_delays()                       { ValidateConfig( "animation-no-delays" ); }
         [Test] public void Test_animation_speed()                           { ValidateConfig( "animation-speed" ); }
         [Test] public void Test_animation_zero_delays()                     { ValidateConfig( "animation-zero-delays" ); }

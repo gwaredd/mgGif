@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Collections;
+using UnityEngine.Profiling;
 
 namespace MG.GIF
 {
@@ -39,7 +40,6 @@ namespace MG.GIF
         private Color32[]   ActiveColourTable;
         private Color32     BackgroundColour  = new Color32(0x00,0x00,0x00,0xFF);
         private Color32     ClearColour       = new Color32(0x00,0x00,0x00,0x00);
-        private byte        BackgroundIndex   = 0xFF;
         private ushort      TransparentIndex  = 0xFFFF;
 
         // current controls
@@ -129,7 +129,7 @@ namespace MG.GIF
             Images.Width    = r.ReadUInt16();
             Images.Height   = r.ReadUInt16();
             ImageFlags      = (ImageFlag) r.ReadByte();
-            BackgroundIndex = r.ReadByte();
+            var bgIndex     = r.ReadByte();
             r.ReadByte(); // aspect ratio
 
             Images.BitDepth = (int) ( ImageFlags & ImageFlag.BitDepthMask ) >> 4 + 1;
@@ -138,9 +138,9 @@ namespace MG.GIF
             {
                 GlobalColourTable = ReadColourTable( ImageFlags, r );
 
-                if( BackgroundIndex < GlobalColourTable.Length )
+                if( bgIndex < GlobalColourTable.Length )
                 {
-                    BackgroundColour = GlobalColourTable[BackgroundIndex];
+                    BackgroundColour = GlobalColourTable[bgIndex];
                 }
             }
         }
@@ -225,10 +225,11 @@ namespace MG.GIF
 
             ControlDelay = r.ReadUInt16();
 
-            var hasTransparentColour = ( flags & 0x01 ) == 0x01;
+            // has transparent colour?
+
             var transparentColour = r.ReadByte();
 
-            if( hasTransparentColour )
+            if( ( flags & 0x01 ) == 0x01 )
             {
                 TransparentIndex = transparentColour;
             }
@@ -513,12 +514,72 @@ namespace MG.GIF
             var bitPosition  = 0;
             var previousCode = -1;
 
+            int bitsAvailable = 0;
+            int readPos = 0;
+            uint bin = 0;
+
             while( bitPosition < bits.Length )
             {
                 // get next code
 
-                int curCode = ReadNextCode( bits, bitPosition, LzwCodeSize );
-                bitPosition += LzwCodeSize;
+
+                //Profiler.BeginSample( "next_code_a" );
+                //ReadNextCode( bits, bitPosition, LzwCodeSize );
+                //int curCode = ReadNextCode( bits, bitPosition, LzwCodeSize );
+                //bitPosition += LzwCodeSize;
+                //Profiler.EndSample();
+
+                uint codex = 0;
+                int require = LzwCodeSize;
+                bool stop = false;
+
+                Profiler.BeginSample( "next_code_b" );
+
+                while( require > 0 )
+                {
+                    if( bitsAvailable == 0 )
+                    {
+                        if( readPos < lzwData.Length )
+                        {
+                            var a = (uint) lzwData[readPos++] << 16;
+                            bin = a | bin;
+                            bitsAvailable += 8;
+
+                            if( readPos < lzwData.Length )
+                            {
+                                var b = (uint) lzwData[readPos++] << 24;
+                                bin = b | bin;
+                                bitsAvailable += 8;
+                            }
+                        }
+                    }
+
+                    if( bitsAvailable == 0 )
+                    {
+                        stop = true;
+                        break;
+                    }
+
+                    var r = Mathf.Min( require, bitsAvailable );
+
+                    bin = bin >> r;
+                    bitsAvailable -= r;
+                    require -= r;
+                }
+
+                Profiler.EndSample();
+
+                if( stop  )
+                {
+                    break;
+                }
+
+
+                codex = ( bin & 0x0000FFFF ) >> ( 16 - LzwCodeSize );
+
+                int curCode = (int) codex;
+
+                //
 
                 if( curCode == LzwClearCode )
                 {

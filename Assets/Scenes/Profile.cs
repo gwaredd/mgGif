@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿using System.Collections;
+using System.Diagnostics;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -11,22 +13,25 @@ public class Profile : MonoBehaviour
     {
         if( !Input.GetKeyDown( KeyCode.P ) )
         {
+            var sw = new Stopwatch();
+            sw.Start();
+            while( sw.ElapsedMilliseconds < 100 )
+            {
+            }
+            sw.Stop();
             return;
         }
 
-        Debug.Log( "running" );
+        UnityEngine.Debug.Log( "running" );
 
         var path  = Path.Combine( Application.streamingAssetsPath, SampleFile );
         var bytes = File.ReadAllBytes( path );
-
-        Profiler.BeginSample( "Decompress" );
 
         for( int i=0; i < NumSamples; i++ )
         {
             var gif   = MG.GIF.Decoder.Parse( bytes );
         }
 
-        Profiler.EndSample();
-        Debug.Log( "done" );
+        UnityEngine.Debug.Log( "done" );
     }
 }

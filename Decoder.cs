@@ -378,10 +378,6 @@ namespace MG.GIF
             img.Delay = ControlDelay;
             img.DisposalMethod = ControlDispose;
 
-
-
-            //var s = Sampler.Get( "DecompressLZW" );
-
             var sw = new Stopwatch();
             sw.Start();
             img.RawImage = DecompressLZW( lzwData );
@@ -449,35 +445,11 @@ namespace MG.GIF
         int LzwNextSize;
         int LzwMaximumCodeSize;
 
-        //Dictionary<int, List<ushort>> LzwCodeTable;
         int LzwCodeTableSize = 0;
-        List<ushort>[] LzwCodeTable;
+        ushort[][] LzwCodeTable;
 
         int         PixelNum;
         Color32[]   OutputBuffer;
-
-
-        private int ReadNextCode( BitArray array, int offset, int codeSize )
-        {
-            // NB: do we need to account for endianess?
-
-            int v = 0;
-
-            if( offset + codeSize > array.Count )
-            {
-                return 0;
-            }
-
-            for( int i = 0; i < codeSize; i++ )
-            {
-                if( array.Get( offset + i ) )
-                {
-                    v |= 1 << i;
-                }
-            }
-
-            return v;
-        }
 
         private void WritePixel( ushort code )
         {
@@ -499,13 +471,6 @@ namespace MG.GIF
             PixelNum++;
         }
 
-        private void ClearCodeTable()
-        {
-            LzwCodeSize      = LzwMinimumCodeSize + 1;
-            LzwNextSize      = (int) Math.Pow( 2, LzwCodeSize );
-            LzwCodeTableSize = LzwMaximumCodeSize + 2;
-        }
-
         private Color32[] DecompressLZW( byte[] lzwData )
         {
             LzwCodeSize        = LzwMinimumCodeSize + 1;
@@ -515,23 +480,21 @@ namespace MG.GIF
             LzwEndCode         = LzwClearCode + 1;
 
             LzwCodeTableSize = LzwMaximumCodeSize + 2;
-            LzwCodeTable     = new List<ushort>[ 4098 ]; // 2^12 + 2
+            LzwCodeTable     = new ushort[ 4098 ][]; // 2^12 + 2
 
             for( ushort i = 0; i < LzwCodeTableSize; i++ )
             {
-                LzwCodeTable[i] = new List<ushort>() { i };
+                LzwCodeTable[i] = new ushort[] { i };
             }
 
-            ClearCodeTable();
 
             // LZW decode loop
 
             PixelNum = 0;
 
-            int previousCode = -1;
-
-            int bitsAvailable  = 0;
-            int readPos        = 0;
+            int  previousCode  = -1;
+            int  bitsAvailable = 0;
+            int  readPos       = 0;
             uint shiftRegister = 0;
 
             while( readPos != lzwData.Length || bitsAvailable > 0 )
@@ -544,9 +507,9 @@ namespace MG.GIF
 
                 if( bitsAvailable > 0 )
                 {
-                    var numBits = Mathf.Min( bitsToRead, bitsAvailable );
+                    var numBits   = Mathf.Min( bitsToRead, bitsAvailable );
                     shiftRegister = shiftRegister >> numBits;
-                    bitsToRead -= numBits;
+                    bitsToRead    -= numBits;
                     bitsAvailable -= numBits;
                 }
 
@@ -578,8 +541,7 @@ namespace MG.GIF
 
                 // process code
 
-                List<ushort> codes = null;
-                ushort extraCode = 0xFFFF;
+                ushort[] codes = null;
 
                 if( curCode == LzwClearCode )
                 {
@@ -597,35 +559,42 @@ namespace MG.GIF
                 else if( curCode < LzwCodeTableSize )
                 {
                     codes = LzwCodeTable[ curCode ];
+
+                    foreach( var code in codes )
+                    {
+                        WritePixel( code );
+                    }
                 }
                 else if( previousCode >= 0 )
                 {
                     codes = LzwCodeTable[ previousCode ];
-                    extraCode = codes[0];
+
+                    foreach( var code in codes )
+                    {
+                        WritePixel( code );
+                    }
+
+                    WritePixel( codes[0] );
                 }
                 else
                 {
                     continue;
                 }
 
-                // output colours
-
-                foreach( var code in codes )
-                {
-                    WritePixel( code );
-                }
-
-                if( extraCode != 0xFFFF )
-                {
-                    WritePixel( extraCode );
-                }
-
                 // create new code
 
                 if( previousCode >= 0 && LzwCodeTableSize != LzwCodeTable.Length )
                 {
-                    var newCodes = new List<ushort>( LzwCodeTable[ previousCode ] );
-                    newCodes.Add( codes[0] );
+                    int len = LzwCodeTable[ previousCode ].Length;
+                    
+                    var newCodes = new ushort[ len + 1 ];
+
+                    for( int i=0; i < len; i++ )
+                    {
+                        newCodes[i] = LzwCodeTable[previousCode][i];
+                    }
+
+                    newCodes[len] = codes[0];
                     LzwCodeTable[LzwCodeTableSize++] = newCodes;
                 }
 

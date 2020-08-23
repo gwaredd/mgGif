@@ -9,7 +9,7 @@ public class AnimatedTextures : MonoBehaviour
     private float[]     mFrameDelay;
 
     private int         mCurFrame = 0;
-    private float       mTime = 0.0f;
+    private float       mTime     = 0.0f;
 
     void Start()
     {
@@ -35,7 +35,7 @@ public class AnimatedTextures : MonoBehaviour
         {
             var frame       = gif.GetFrame( i );
             mFrames[i]      = frame.CreateTexture();
-            mFrameDelay[i]  = frame.Delay / 100.0f;
+            mFrameDelay[i]  = frame.Delay / 1000.0f; // ms -> s
         }
 
         GetComponent<Renderer>().material.mainTexture = mFrames[0];

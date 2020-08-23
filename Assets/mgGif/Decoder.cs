@@ -1,10 +1,6 @@
 ﻿using UnityEngine;
 using System;
 using System.IO;
-using System.Collections.Generic;
-using System.Collections;
-using UnityEngine.Profiling;
-using System.Diagnostics;
 
 namespace MG.GIF
 {
@@ -13,24 +9,24 @@ namespace MG.GIF
         [Flags]
         private enum ImageFlag
         {
-            Interlaced = 0x40,
-            ColourTable = 0x80,
+            Interlaced    = 0x40,
+            ColourTable   = 0x80,
             TableSizeMask = 0x07,
-            BitDepthMask = 0x70,
+            BitDepthMask  = 0x70,
         }
 
         private enum Block
         {
-            Image = 0x2C,
+            Image     = 0x2C,
             Extension = 0x21,
-            End = 0x3B
+            End       = 0x3B
         }
 
         private enum Extension
         {
-            GraphicControl = 0xF9,
-            Comments = 0xFE,
-            PlainText = 0x01,
+            GraphicControl  = 0xF9,
+            Comments        = 0xFE,
+            PlainText       = 0x01,
             ApplicationData = 0xFF
         }
 
@@ -38,7 +34,7 @@ namespace MG.GIF
 
         // colour
         private Color32[]   GlobalColourTable = null;
-        private Color32[]   ActiveColourTable;
+        private Color32[]   ActiveColourTable = null;
         private Color32     BackgroundColour  = new Color32(0x00,0x00,0x00,0xFF);
         private Color32     ClearColour       = new Color32(0x00,0x00,0x00,0x00);
         private ushort      TransparentIndex  = 0xFFFF;
@@ -127,10 +123,11 @@ namespace MG.GIF
 
             // read header
 
-            Images.Width = r.ReadUInt16();
-            Images.Height = r.ReadUInt16();
-            ImageFlags = (ImageFlag) r.ReadByte();
+            Images.Width    = r.ReadUInt16();
+            Images.Height   = r.ReadUInt16();
+            ImageFlags      = (ImageFlag) r.ReadByte();
             var bgIndex     = r.ReadByte();
+
             r.ReadByte(); // aspect ratio
 
             Images.BitDepth = (int) ( ImageFlags & ImageFlag.BitDepthMask ) >> 4 + 1;
@@ -141,7 +138,7 @@ namespace MG.GIF
 
                 if( bgIndex < GlobalColourTable.Length )
                 {
-                    BackgroundColour = GlobalColourTable[bgIndex];
+                    BackgroundColour = GlobalColourTable[ bgIndex ];
                 }
             }
         }
@@ -291,11 +288,11 @@ namespace MG.GIF
         {
             // read image block header
 
-            ImageLeft = r.ReadUInt16();
-            ImageTop = r.ReadUInt16();
-            ImageWidth = r.ReadUInt16();
-            ImageHeight = r.ReadUInt16();
-            ImageFlags = (ImageFlag) r.ReadByte();
+            ImageLeft       = r.ReadUInt16();
+            ImageTop        = r.ReadUInt16();
+            ImageWidth      = r.ReadUInt16();
+            ImageHeight     = r.ReadUInt16();
+            ImageFlags      = (ImageFlag) r.ReadByte();
             ImageInterlaced = ImageFlags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
@@ -378,11 +375,9 @@ namespace MG.GIF
             img.Delay = ControlDelay;
             img.DisposalMethod = ControlDispose;
 
-            var sw = new Stopwatch();
-            sw.Start();
+            //var sw = new Stopwatch(); sw.Start();
             img.RawImage = DecompressLZW( lzwData );
-            sw.Stop();
-            UnityEngine.Debug.Log( sw.ElapsedTicks );
+            //sw.Stop(); UnityEngine.Debug.Log( $"{sw.ElapsedTicks} ticks, {sw.ElapsedMilliseconds}ms" );
 
             if( ImageInterlaced )
             {
@@ -439,35 +434,23 @@ namespace MG.GIF
         //------------------------------------------------------------------------------
         // LZW
 
-        int LzwClearCode;
-        int LzwEndCode;
-        int LzwCodeSize;
-        int LzwNextSize;
-        int LzwMaximumCodeSize;
+        int         LzwClearCode;
+        int         LzwEndCode;
+        int         LzwCodeSize;
+        int         LzwNextSize;
+        int         LzwMaximumCodeSize;
 
-        int         LzwCodeTableSize = 0;
-        int[]       LzwCodeTable;
+        // the code spends 95% of the time here so optimised for performance using pre-allocated buffers (cut down on allocation overhead)
 
-        const int   LzwCodeBufferSize = 16 * 1024;
-        int         LzwCodeBufferPos = 0;
-        ushort[]    LzwCodeBuffer = new ushort[LzwCodeBufferSize];
+        int         LzwNumCodes      = 0;
+        int[]       LzwCodeIndices   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
+        ushort[]    LzwCodeBuffer    = new ushort[ 64 * 1024 ];     // 64k buffer for codes - should be plenty but we dynamically resize if required
+        int         LzwCodeBufferLen = 0;                           // end of data (next write position)
 
         int         PixelNum;
         Color32[]   OutputBuffer;
 
-        private Color32 GetColour( ushort code )
-        {
-            if( code == TransparentIndex )
-            {
-                return ClearColour;
-            }
-            else if( code < ActiveColourTable.Length )
-            {
-                return ActiveColourTable[code];
-            }
-
-            return BackgroundColour;
-        }
+        // lookup colour based on code and write to correct position
 
         private void WritePixel( ushort code )
         {
@@ -482,131 +465,161 @@ namespace MG.GIF
 
                 if( code != TransparentIndex )
                 {
-                    OutputBuffer[index] = code < ActiveColourTable.Length ? ActiveColourTable[code] : BackgroundColour;
+                    OutputBuffer[ index ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
                 }
             }
 
             PixelNum++;
         }
 
+        //------------------------------------------------------------------------------
+        // decompress LZW data and write colours to OutputBuffer
+        // Optimsed for performance
+        // LzwCodeSize setup before call
+        // OutputBuffer should be initialised before hand with default values (so despose and transparency works correctly)
+
         private Color32[] DecompressLZW( byte[] lzwData )
         {
+            // setup codes
+
             LzwCodeSize        = LzwMinimumCodeSize + 1;
             LzwNextSize        = (int) Math.Pow( 2, LzwCodeSize );
             LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
             LzwClearCode       = LzwMaximumCodeSize;
             LzwEndCode         = LzwClearCode + 1;
 
-            LzwCodeTableSize = LzwMaximumCodeSize + 2;
-            LzwCodeTable     = new int[ 4098 ]; // 2^12 + 2
+            // initialise buffers
 
-            //Array.Resize()
+            LzwCodeBufferLen   = 0;
+            LzwNumCodes        = LzwMaximumCodeSize + 2;
 
-            for( ushort i = 0; i < LzwCodeTableSize; i++ )
+            // write initial code sequences
+
+            for( ushort i = 0; i < LzwNumCodes; i++ )
             {
-                LzwCodeTable[i] = LzwCodeBufferPos;
-                LzwCodeBuffer[LzwCodeBufferPos++] = 1; // length
-                LzwCodeBuffer[LzwCodeBufferPos++] = i; // code
+                LzwCodeIndices[ i ] = LzwCodeBufferLen;
+                LzwCodeBuffer[ LzwCodeBufferLen++ ] = 1; // length
+                LzwCodeBuffer[ LzwCodeBufferLen++ ] = i; // code
             }
 
 
             // LZW decode loop
 
-            PixelNum = 0;
+            PixelNum = 0; // number of pixel being processed (used to find row and column of output)
 
-            int  previousCode  = -1;
-            int  bitsAvailable = 0;
-            int  readPos       = 0;
-            uint shiftRegister = 0;
+            int  previousCode      = -1;    // last code processed
+            int  bitsAvailable     = 0;     // number of bits available to read in the shift register
+            int  inputDataPosition = 0;     // next read position from the input stream
+            uint shiftRegister     = 0;     // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-            while( readPos != lzwData.Length || bitsAvailable > 0 )
+            while( inputDataPosition != lzwData.Length || bitsAvailable > 0 )
             {
                 // get next code
 
-                int bitsToRead = LzwCodeSize;
+                int bitsLeftToRead = LzwCodeSize;
 
-                // consume any existing bits
+                // consume any existing bits in the shift register
 
                 if( bitsAvailable > 0 )
                 {
-                    var numBits   = Mathf.Min( bitsToRead, bitsAvailable );
-                    shiftRegister = shiftRegister >> numBits;
-                    bitsToRead    -= numBits;
-                    bitsAvailable -= numBits;
+                    var numBits    = Mathf.Min( bitsLeftToRead, bitsAvailable );
+                    shiftRegister  >>= numBits;
+                    bitsLeftToRead -= numBits;
+                    bitsAvailable  -= numBits;
                 }
 
-                // load up new bits
+                // add new bytes to shift register from input stream
 
                 if( bitsAvailable == 0 )
                 {
-                    if( readPos < lzwData.Length - 1 )
+                    if( inputDataPosition < lzwData.Length - 1 )
                     {
-                        shiftRegister |= ( (uint) lzwData[readPos++] << 16 ) | ( (uint) lzwData[readPos++] << 24 );
+                        // add two bytes if we can
+                        shiftRegister |= ( (uint) lzwData[ inputDataPosition++ ] << 16 ) | ( (uint) lzwData[ inputDataPosition++ ] << 24 );
                         bitsAvailable = 16;
                     }
-                    else if( readPos < lzwData.Length )
+                    else if( inputDataPosition < lzwData.Length )
                     {
-                        shiftRegister |= (uint) lzwData[readPos++] << 16;
+                        // or if just one byte left
+                        shiftRegister |= (uint) lzwData[ inputDataPosition++ ] << 16;
                         bitsAvailable = 8;
                     }
                 }
 
-                // consume any remaining bits
+                // read any remaining bits required
 
-                if( bitsToRead > 0 )
+                if( bitsLeftToRead > 0 )
                 {
-                    shiftRegister = shiftRegister >> bitsToRead;
-                    bitsAvailable -= bitsToRead;
+                    shiftRegister >>= bitsLeftToRead;
+                    bitsAvailable -= bitsLeftToRead;
                 }
+
+                // mask out code bits and shift to end
 
                 int curCode = (int)( ( shiftRegister & 0x0000FFFF ) >> ( 16 - LzwCodeSize ) );
 
                 // process code
+
                 ushort newCode = 0;
-                int offset;
-                int len;
 
                 if( curCode == LzwClearCode )
                 {
-                    // clear code table
-                    LzwCodeSize      = LzwMinimumCodeSize + 1;
-                    LzwNextSize      = (int) Math.Pow( 2, LzwCodeSize );
-                    LzwCodeTableSize = LzwMaximumCodeSize + 2;
+                    // reset codes
+                    LzwCodeSize = LzwMinimumCodeSize + 1;
+                    LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
+                    LzwNumCodes = LzwMaximumCodeSize + 2;
 
-                    LzwCodeBufferPos = LzwCodeTableSize * 2;
-                    previousCode = -1;
+                    // reset buffer write pos
+                    LzwCodeBufferLen = LzwNumCodes * 2;
+
+                    // clear previous code
+                    previousCode     = -1;
+
                     continue;
                 }
                 else if( curCode == LzwEndCode )
                 {
+                    // stop
                     break;
                 }
-                else if( curCode < LzwCodeTableSize )
+                else if( curCode < LzwNumCodes )
                 {
-                    offset = LzwCodeTable[curCode];
-                    len = LzwCodeBuffer[ offset++ ];
+                    // write existing code
 
-                    //codes = LzwCodeTable[ curCode ];
+                    // get position of code in buffer
 
-                    newCode = LzwCodeBuffer[offset];
+                    var bufferPos  = LzwCodeIndices[ curCode ];
+                    var codeLength = LzwCodeBuffer[ bufferPos++ ];
 
-                    for( int i=0; i < len; i++ )
+                    // get first code
+
+                    newCode = LzwCodeBuffer[ bufferPos ];
+
+                    // output colours
+
+                    for( int i=0; i < codeLength; i++ )
                     {
-                        WritePixel( LzwCodeBuffer[offset+i] );
+                        WritePixel( LzwCodeBuffer[ bufferPos++ ] );
                     }
                 }
                 else if( previousCode >= 0 )
                 {
-                    offset = LzwCodeTable[previousCode];
-                    len = LzwCodeBuffer[ offset++ ];
+                    // write previous code
 
-                    newCode = LzwCodeBuffer[offset];
+                    // get position of code in buffer
 
-                    //codes = LzwCodeTable[ curCode ];
+                    var bufferPos  = LzwCodeIndices[ previousCode ];
+                    var codeLength = LzwCodeBuffer[ bufferPos++ ];
 
-                    for( int i = 0; i < len; i++ )
+                    // get first code
+
+                    newCode = LzwCodeBuffer[ bufferPos ];
+
+                    // output colours
+
+                    for( int i = 0; i < codeLength; i++ )
                     {
-                        WritePixel( LzwCodeBuffer[offset+i] );
+                        WritePixel( LzwCodeBuffer[ bufferPos++ ] );
                     }
 
                     WritePixel( newCode );
@@ -618,49 +631,45 @@ namespace MG.GIF
 
                 // create new code
 
-                if( previousCode >= 0 && LzwCodeTableSize != LzwCodeTable.Length )
+                if( previousCode >= 0 && LzwNumCodes != LzwCodeIndices.Length )
                 {
-                    var prevOffset = LzwCodeTable[ previousCode ];
-                    int prevLen = LzwCodeBuffer[ prevOffset++ ];
+                    // get previous code from buffer
+                    var bufferPosition = LzwCodeIndices[ previousCode ];
+                    var codeLength     = LzwCodeBuffer[ bufferPosition++ ];
 
-                    //var newCodes = new ushort[ len + 1 ];
+                    // resize buffer if required (should be rare)
 
-                    //LzwCodeBuffer[LzwCodeBufferPos++] = (ushort)( len + 1 ); ; // length
-
-                    //for( int i=0; i < len; i++ )
-                    //{
-                    //    LzwCodeBuffer[LzwCodeBufferPos++] = LzwCodeTable[previousCode][i];
-                    //}
-
-                    if( LzwCodeBufferPos + prevLen + 1 >= LzwCodeBuffer.Length )
+                    if( LzwCodeBufferLen + codeLength + 1 >= LzwCodeBuffer.Length )
                     {
                         Array.Resize( ref LzwCodeBuffer, LzwCodeBuffer.Length * 2 );
                     }
 
-                    LzwCodeTable[LzwCodeTableSize++] = LzwCodeBufferPos;
-                    LzwCodeBuffer[LzwCodeBufferPos++] = (ushort) ( prevLen + 1 );
+                    // add new code
 
-                    for( int i=0; i < prevLen; i++ )
+                    LzwCodeIndices[ LzwNumCodes++ ]     = LzwCodeBufferLen;
+                    LzwCodeBuffer[ LzwCodeBufferLen++ ] = (ushort) ( codeLength + 1 );
+
+                    // write previous code sequence
+
+                    for( int i=0; i < codeLength; i++ )
                     {
-                        LzwCodeBuffer[LzwCodeBufferPos++] = LzwCodeBuffer[prevOffset + i];
-                        //newCodes[i] = LzwCodeTable[previousCode][i];
+                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPosition + i ];
                     }
 
+                    // append new code
 
-                    LzwCodeBuffer[LzwCodeBufferPos++] = newCode;
-                    //newCodes[len] = codes[0];
-                    //LzwCodeTable[LzwCodeTableSize++] = newCodes;
+                    LzwCodeBuffer[ LzwCodeBufferLen++ ] = newCode;
                 }
 
                 // increase code size?
 
-                if( LzwCodeTableSize >= LzwNextSize && LzwCodeSize < 12 )
+                if( LzwNumCodes >= LzwNextSize && LzwCodeSize < 12 )
                 {
                     LzwCodeSize++;
                     LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
                 }
 
-                // next
+                // remeber last code processed
                 previousCode = curCode;
             }
 

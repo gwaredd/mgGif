@@ -372,7 +372,7 @@ namespace MG.GIF
 
             var img = new Image( Images );
 
-            img.Delay = ControlDelay;
+            img.Delay = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
 
             //var sw = new Stopwatch(); sw.Start();

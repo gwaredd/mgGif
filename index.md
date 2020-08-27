@@ -1,4 +1,4 @@
 ## mgGif
 
-![Butterfly](butterfly.gif])
+![Butterfly](butterfly.gif)
 

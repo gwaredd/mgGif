@@ -1,7 +1,7 @@
 # mgGIF
 > Parses a GIF file and extracts the images
 
-![Butterfly](https://i.giphy.com/media/7OM8aqLAr2xQ4/giphy.webp)
+![Butterfly](https://gwaredd.github.io/mgGif/butterfly.gif)
 
 ## Installation
 

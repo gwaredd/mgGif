@@ -30,8 +30,7 @@ Or added to your `Packages/manifest.json` file
 byte[] bytes = File.ReadAllBytes( filename );
 
 var gif = MG.GIF.Decoder.Parse( bytes );
-
-vr tex = gif.GetFrame( 0 ).CreateTexture();
+var tex = gif.GetFrame( 0 ).CreateTexture();
 ```
 
 See ` Assets\Scenes\AnimatedTextures.cs` for an example

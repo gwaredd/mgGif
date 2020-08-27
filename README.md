@@ -7,6 +7,23 @@
 
 There is only one file, copy `Assets\mgGif\mgGif.cs` to your project.
 
+Alternatively, the [upm](https://github.com/gwaredd/mgGif/tree/upm) branch can be pulled directly into the `Packages` directory, e.g.
+
+```
+git clone -b upm git@github.com:gwaredd/mgGif.git
+```
+
+Or added to your `Packages/manifest.json` file
+
+```
+{
+  "dependencies": {
+    "com.gwaredd.mggif": "https://github.com/gwaredd/mgGif.git#upm",
+    ...
+  }
+}
+```
+
 ## Usage
 
 ```

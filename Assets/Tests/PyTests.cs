@@ -170,7 +170,8 @@ namespace MG.GIF
 
                     var expected = Get(key);
 
-                    Assert.AreEqual( expected, frame.Delay.ToString() );
+                    // tests are in 1/100s whereas we store the delay in ms
+                    Assert.AreEqual( expected, ( frame.Delay / 10 ).ToString() );
                 }
                 else
                 {

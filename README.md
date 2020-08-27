@@ -1,5 +1,5 @@
 # mgGIF
-> Parses a GIF file and extracts the images
+> A unity library to parse a GIF file and extracts the images
 
 ![Butterfly](https://gwaredd.github.io/mgGif/butterfly.gif)
 

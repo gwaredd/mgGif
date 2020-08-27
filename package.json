@@ -1,0 +1,13 @@
+{
+  "name": "com.gwaredd.mggif",
+  "version": "1.0.0",
+  "displayName": "mgGIF",
+  "description": "Library for extracting frames from animated gif images",
+  "license": "MIT",
+  "unity": "2018.4",
+  "author": {
+    "name": "Gwaredd",
+    "email": "gwaredd@hotmail.com",
+    "url": "https://github.com/gwaredd/mgGif"
+  }
+}

@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace MG.GIF
 {
@@ -542,29 +543,29 @@ namespace MG.GIF
         ushort[]    LzwCodeBuffer    = new ushort[ 64 * 1024 ];     // 64k buffer for codes - should be plenty but we dynamically resize if required
         int         LzwCodeBufferLen = 0;                           // end of data (next write position)
 
-        int         PixelNum;
         Color32[]   OutputBuffer;
+        int         PixelNum;
 
         // lookup colour based on code and write to correct position
 
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
         private void WritePixel( ushort code )
         {
-            var row = ImageTop  + PixelNum / ImageWidth;
-            var col = ImageLeft + PixelNum % ImageWidth;
+            var row = ImageTop + PixelNum / ImageWidth;
 
-            if( row < Images.Height && col < Images.Width )
+            if( row < Images.Height )
             {
-                // reverse row (flip in Y) because gif coordinates start at the top-left (unity is bottom-left)
+                var col = ImageLeft + PixelNum % ImageWidth;
 
-                var index = ( Images.Height - row - 1 ) * Images.Width + col;
-
-                if( code != TransparentIndex )
+                if( col < Images.Width )
                 {
+                    // reverse row (flip in Y) because gif coordinates start at the top-left (unity is bottom-left)
+
+                    var index = ( Images.Height - row - 1 ) * Images.Width + col;
+
                     OutputBuffer[ index ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
                 }
             }
-
-            PixelNum++;
         }
 
         //------------------------------------------------------------------------------
@@ -668,7 +669,7 @@ namespace MG.GIF
                     LzwCodeBufferLen = LzwNumCodes * 2;
 
                     // clear previous code
-                    previousCode     = -1;
+                    previousCode = -1;
 
                     continue;
                 }
@@ -692,9 +693,16 @@ namespace MG.GIF
 
                     // output colours
 
-                    for( int i=0; i < codeLength; i++ )
+                    for( int i = 0; i < codeLength; i++ )
                     {
-                        WritePixel( LzwCodeBuffer[ bufferPos++ ] );
+                        var code = LzwCodeBuffer[ bufferPos++ ];
+
+                        if( code != TransparentIndex )
+                        {
+                            WritePixel( code );
+                        }
+
+                        PixelNum++;
                     }
                 }
                 else if( previousCode >= 0 )
@@ -714,10 +722,22 @@ namespace MG.GIF
 
                     for( int i = 0; i < codeLength; i++ )
                     {
-                        WritePixel( LzwCodeBuffer[ bufferPos++ ] );
+                        var code = LzwCodeBuffer[ bufferPos++ ];
+
+                        if( code != TransparentIndex )
+                        {
+                            WritePixel( code );
+                        }
+
+                        PixelNum++;
                     }
 
-                    WritePixel( newCode );
+                    if( newCode != TransparentIndex )
+                    {
+                        WritePixel( newCode );
+                    }
+
+                    PixelNum++;
                 }
                 else
                 {

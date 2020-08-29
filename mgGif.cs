@@ -189,7 +189,7 @@ namespace MG.GIF
 
         private Color32[] ReadColourTable( ImageFlag flags, BinaryReader r )
         {
-            var tableSize   = (int) Math.Pow( 2, (int)( flags & ImageFlag.TableSizeMask ) + 1 );
+            var tableSize   = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
             var colourTable = new Color32[ tableSize ];
 
             for( var i = 0; i < tableSize; i++ )
@@ -408,6 +408,11 @@ namespace MG.GIF
 
             LzwMinimumCodeSize = r.ReadByte();
 
+            if( LzwMinimumCodeSize > 11 )
+            {
+                LzwMinimumCodeSize = 11;
+            }
+
 
             // compressed image data
 
@@ -543,6 +548,7 @@ namespace MG.GIF
         int[]       LzwCodeIndices   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[]    LzwCodeBuffer    = new ushort[ 64 * 1024 ];     // 64k buffer for codes - should be plenty but we dynamically resize if required
         int         LzwCodeBufferLen = 0;                           // end of data (next write position)
+        int[]       Pow2             = { 0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         Color32[]   OutputBuffer;
         int         PixelNum;
@@ -580,8 +586,8 @@ namespace MG.GIF
             // setup codes
 
             LzwCodeSize        = LzwMinimumCodeSize + 1;
-            LzwNextSize        = (int) Math.Pow( 2, LzwCodeSize );
-            LzwMaximumCodeSize = (int) Math.Pow( 2, LzwMinimumCodeSize );
+            LzwNextSize        = Pow2[ LzwCodeSize ];
+            LzwMaximumCodeSize = Pow2[ LzwMinimumCodeSize ];
             LzwClearCode       = LzwMaximumCodeSize;
             LzwEndCode         = LzwClearCode + 1;
 
@@ -663,7 +669,7 @@ namespace MG.GIF
                 {
                     // reset codes
                     LzwCodeSize = LzwMinimumCodeSize + 1;
-                    LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
+                    LzwNextSize = Pow2[ LzwCodeSize ];
                     LzwNumCodes = LzwMaximumCodeSize + 2;
 
                     // reset buffer write pos
@@ -782,7 +788,7 @@ namespace MG.GIF
                 if( LzwNumCodes >= LzwNextSize && LzwCodeSize < 12 )
                 {
                     LzwCodeSize++;
-                    LzwNextSize = (int) Math.Pow( 2, LzwCodeSize );
+                    LzwNextSize = Pow2[ LzwCodeSize ];
                 }
 
                 // remeber last code processed

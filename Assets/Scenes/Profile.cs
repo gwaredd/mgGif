@@ -1,37 +1,64 @@
-﻿using System.Collections;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Profiling;
 
 public class Profile : MonoBehaviour
 {
-    public string SampleFile = "cat.gif";
-    public int NumSamples = 1;
+    public int NumSamples = 3;
+
+    private int     mSample;
+    private float   mTimer;
+
+    void Start()
+    {
+        mSample = 0;
+        mTimer  = 2.0f;
+    }
 
     void Update()
     {
-        if( !Input.GetKeyDown( KeyCode.P ) )
+        mTimer -= Time.deltaTime;
+
+        Throttle();
+
+        if( mTimer < 0.0f && mSample < NumSamples )
         {
-            var sw = new Stopwatch();
-            sw.Start();
-            while( sw.ElapsedMilliseconds < 100 )
-            {
-            }
-            sw.Stop();
-            return;
+            Run( ++mSample );
+            mTimer = 1.0f;
+        }
+    }
+
+    void Throttle()
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        while( sw.ElapsedMilliseconds < 100 )
+        {
         }
 
-        UnityEngine.Debug.Log( "running" );
+        sw.Stop();
+    }
 
-        var path  = Path.Combine( Application.streamingAssetsPath, SampleFile );
-        var bytes = File.ReadAllBytes( path );
+    void Run( int sample )
+    {
+        var files = new string[]{ "butterfly.gif", "cat.gif", "jellyfish.gif" };
 
-        for( int i=0; i < NumSamples; i++ )
+        Profiler.BeginSample( $"Sample {sample}" );
+
+        var sw = new Stopwatch();
+        sw.Start();
+
+        foreach( var file in files )
         {
-            var gif   = MG.GIF.Decoder.Parse( bytes );
+            var path  = Path.Combine( Application.streamingAssetsPath, file );
+            MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
         }
 
-        UnityEngine.Debug.Log( "done" );
+        sw.Stop();
+        UnityEngine.Debug.Log( $"Sample {sample}, {sw.ElapsedMilliseconds}ms, {sw.ElapsedTicks} ticks" );
+
+        Profiler.EndSample();
     }
 }

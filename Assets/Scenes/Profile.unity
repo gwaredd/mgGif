@@ -244,8 +244,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9808dc86324b4444aa3cbc4359531888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SampleFile: cat.gif
-  NumSamples: 1
+  NumSamples: 5
 --- !u!4 &1418598376
 Transform:
   m_ObjectHideFlags: 0

@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using UnityEngine.Profiling;
 
 namespace MG.GIF
 {
@@ -618,7 +619,7 @@ namespace MG.GIF
 
                 if( bitsAvailable > 0 )
                 {
-                    var numBits    = Mathf.Min( bitsLeftToRead, bitsAvailable );
+                    var numBits    = bitsLeftToRead < bitsAvailable ? bitsLeftToRead : bitsAvailable;
                     shiftRegister  >>= numBits;
                     bitsLeftToRead -= numBits;
                     bitsAvailable  -= numBits;

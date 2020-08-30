@@ -295,23 +295,8 @@ namespace MG.GIF
 
             var flags = r.ReadByte();
 
-            switch( flags & 0x1C )
-            {
-                case 0x04:
-                    ControlDispose = Disposal.DoNotDispose;
-                    break;
-                case 0x08:
-                    ControlDispose = Disposal.RestoreBackground;
-                    break;
-                case 0x0C:
-                    ControlDispose = Disposal.ReturnToPrevious;
-                    break;
-                default:
-                    ControlDispose = Disposal.None;
-                    break;
-            }
-
-            ControlDelay = r.ReadUInt16();
+            ControlDispose = (Disposal) ( flags & 0x1C );
+            ControlDelay   = r.ReadUInt16();
 
             // has transparent colour?
 
@@ -366,6 +351,7 @@ namespace MG.GIF
                 }
 
                 Array.Copy( input, ( numRows - copyRow - 1 ) * width, output, writePos, width );
+
                 writePos -= width;
             }
 

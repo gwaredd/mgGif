@@ -5,15 +5,15 @@ using UnityEngine.Profiling;
 
 public class Profile : MonoBehaviour
 {
-    public int NumSamples = 3;
-
-    private int     mSample;
+    private int     mCount;
     private float   mTimer;
+    private long    mTotal;
 
     void Start()
     {
-        mSample = 0;
-        mTimer  = 2.0f;
+        mCount = 0;
+        mTimer = 2.0f;
+        mTotal = 0;
     }
 
     void Update()
@@ -22,9 +22,9 @@ public class Profile : MonoBehaviour
 
         Throttle();
 
-        if( mTimer < 0.0f && mSample < NumSamples )
+        if( mTimer < 0.0f )
         {
-            Run( ++mSample );
+            Run( ++mCount );
             mTimer = 1.0f;
         }
     }
@@ -57,7 +57,9 @@ public class Profile : MonoBehaviour
         }
 
         sw.Stop();
-        UnityEngine.Debug.Log( $"Sample {sample}, {sw.ElapsedMilliseconds}ms, {sw.ElapsedTicks} ticks" );
+        mTotal += sw.ElapsedMilliseconds;
+        var avg = (float) mTotal / (float) mCount;
+        UnityEngine.Debug.Log( $"Sample {sample}, {sw.ElapsedMilliseconds}ms, avg {avg}ms, {sw.ElapsedTicks} ticks" );
 
         Profiler.EndSample();
     }

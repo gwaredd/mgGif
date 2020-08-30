@@ -3,7 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using UnityEngine.Profiling;
+//using UnityEngine.Profiling;
 
 namespace MG.GIF
 {
@@ -17,20 +17,15 @@ namespace MG.GIF
 
     public class Image
     {
+        public int       Width;
+        public int       Height;
         public Color32[] RawImage;
         public int       Delay; // ms
         public Disposal  DisposalMethod = Disposal.None;
 
-        protected ImageList mGif;
-
-        public Image( ImageList gif )
-        {
-            mGif = gif;
-        }
-
         public Texture2D CreateTexture()
         {
-            var tex = new Texture2D( mGif.Width, mGif.Height, TextureFormat.ARGB32, false );
+            var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false );
             tex.filterMode = FilterMode.Point;
             tex.wrapMode   = TextureWrapMode.Clamp;
             tex.SetPixels32( RawImage );
@@ -472,14 +467,13 @@ namespace MG.GIF
 
             // create image
 
-            var img = new Image( Images );
+            var img = new Image();
 
-            img.Delay = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
+            img.Width          = Images.Width;
+            img.Height         = Images.Height;
+            img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
-
-            //var sw = new Stopwatch(); sw.Start();
-            img.RawImage = DecompressLZW( lzwData );
-            //sw.Stop(); UnityEngine.Debug.Log( $"{sw.ElapsedTicks} ticks, {sw.ElapsedMilliseconds}ms" );
+            img.RawImage       = DecompressLZW( lzwData );
 
             if( ImageInterlaced )
             {
@@ -535,6 +529,8 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
         // LZW
+        // the code spends 95% of the time here so optimised for performance using 
+        // pre-allocated buffers (cut down on allocation overhead)
 
         int         LzwClearCode;
         int         LzwEndCode;
@@ -542,13 +538,11 @@ namespace MG.GIF
         int         LzwNextSize;
         int         LzwMaximumCodeSize;
 
-        // the code spends 95% of the time here so optimised for performance using pre-allocated buffers (cut down on allocation overhead)
-
         int         LzwNumCodes      = 0;
         int[]       LzwCodeIndices   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[]    LzwCodeBuffer    = new ushort[ 64 * 1024 ];     // 64k buffer for codes - should be plenty but we dynamically resize if required
         int         LzwCodeBufferLen = 0;                           // end of data (next write position)
-        int[]       Pow2             = { 0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         Color32[]   OutputBuffer;
         int         PixelNum;
@@ -619,6 +613,8 @@ namespace MG.GIF
             {
                 // get next code
 
+                // Profiler.BeginSample( "nextcode" );
+
                 int bitsLeftToRead = LzwCodeSize;
 
                 // consume any existing bits in the shift register
@@ -661,6 +657,10 @@ namespace MG.GIF
 
                 int curCode = (int)( ( shiftRegister & 0x0000FFFF ) >> ( 16 - LzwCodeSize ) );
 
+                // Profiler.EndSample();
+
+                // Profiler.BeginSample( "process" );
+
                 // process code
 
                 ushort newCode = 0;
@@ -678,10 +678,13 @@ namespace MG.GIF
                     // clear previous code
                     previousCode = -1;
 
+                    // Profiler.EndSample();
+
                     continue;
                 }
                 else if( curCode == LzwEndCode )
                 {
+                    // Profiler.EndSample();
                     // stop
                     break;
                 }
@@ -748,8 +751,14 @@ namespace MG.GIF
                 }
                 else
                 {
+                    // Profiler.EndSample();
                     continue;
                 }
+
+                // Profiler.EndSample();
+
+                // Profiler.BeginSample( "newcode" );
+
 
                 // create new code
 
@@ -793,6 +802,8 @@ namespace MG.GIF
 
                 // remeber last code processed
                 previousCode = curCode;
+
+                // Profiler.EndSample();
             }
 
             return OutputBuffer;

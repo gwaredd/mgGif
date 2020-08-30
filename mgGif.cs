@@ -26,8 +26,10 @@ namespace MG.GIF
         public Texture2D CreateTexture()
         {
             var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false );
+
             tex.filterMode = FilterMode.Point;
             tex.wrapMode   = TextureWrapMode.Clamp;
+
             tex.SetPixels32( RawImage );
             tex.Apply();
 
@@ -37,10 +39,9 @@ namespace MG.GIF
 
     public class ImageList
     {
-        public string   Version;
-        public ushort   Width;
-        public ushort   Height;
-        public int      BitDepth;
+        public string Version;
+        public ushort Width;
+        public ushort Height;
 
         public List<Image> Images = new List<Image>();
 
@@ -140,8 +141,6 @@ namespace MG.GIF
         private ushort      ImageTop;
         private ushort      ImageWidth;
         private ushort      ImageHeight;
-        private ImageFlag   ImageFlags;
-        private bool        ImageInterlaced;
         private byte        LzwMinimumCodeSize;
 
 
@@ -215,18 +214,17 @@ namespace MG.GIF
 
             // read header
 
-            Images.Width    = r.ReadUInt16();
-            Images.Height   = r.ReadUInt16();
-            ImageFlags      = (ImageFlag) r.ReadByte();
-            var bgIndex     = r.ReadByte();
+            Images.Width  = r.ReadUInt16();
+            Images.Height = r.ReadUInt16();
+
+            var flags     = (ImageFlag) r.ReadByte();
+            var bgIndex   = r.ReadByte();
 
             r.ReadByte(); // aspect ratio
 
-            Images.BitDepth = (int) ( ImageFlags & ImageFlag.BitDepthMask ) >> 4 + 1;
-
-            if( ImageFlags.HasFlag( ImageFlag.ColourTable ) )
+            if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                GlobalColourTable = ReadColourTable( ImageFlags, r );
+                GlobalColourTable = ReadColourTable( flags, r );
 
                 if( bgIndex < GlobalColourTable.Length )
                 {
@@ -384,17 +382,18 @@ namespace MG.GIF
             ImageTop        = r.ReadUInt16();
             ImageWidth      = r.ReadUInt16();
             ImageHeight     = r.ReadUInt16();
-            ImageFlags      = (ImageFlag) r.ReadByte();
-            ImageInterlaced = ImageFlags.HasFlag( ImageFlag.Interlaced );
+
+            var flags       = (ImageFlag) r.ReadByte();
+            var interlaced  = flags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
             {
                 return;
             }
 
-            if( ImageFlags.HasFlag( ImageFlag.ColourTable ) )
+            if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                ActiveColourTable = ReadColourTable( ImageFlags, r );
+                ActiveColourTable = ReadColourTable( flags, r );
             }
             else
             {
@@ -475,7 +474,7 @@ namespace MG.GIF
             img.DisposalMethod = ControlDispose;
             img.RawImage       = DecompressLZW( lzwData );
 
-            if( ImageInterlaced )
+            if( interlaced )
             {
                 img.RawImage = Deinterlace( img.RawImage, ImageWidth );
             }

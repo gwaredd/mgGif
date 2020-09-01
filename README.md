@@ -5,7 +5,7 @@
 
 ## Installation
 
-There is only one file, copy `Assets\mgGif\mgGif.cs` to your project.
+There is only one file, copy [Assets\mgGif\mgGif.cs](https://github.com/gwaredd/mgGif/blob/master/Assets/mgGif/mgGif.cs) to your project.
 
 Alternatively, the [upm](https://github.com/gwaredd/mgGif/tree/upm) branch can be pulled directly into the `Packages` directory, e.g.
 

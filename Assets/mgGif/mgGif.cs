@@ -171,11 +171,11 @@ namespace MG.GIF
             return (ushort) ( ( Input[ InputPos++ ] ) | Input[ InputPos++ ] << 8 );
         }
 
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        byte ReadByte()
-        {
-            return Input[ InputPos++ ];
-        }
+        //[MethodImpl( MethodImplOptions.AggressiveInlining )]
+        //byte Input[ InputPos++ ]
+        //{
+        //    return Input[ InputPos++ ];
+        //}
 
         public ImageList Decode( byte[] data )
         {
@@ -204,9 +204,9 @@ namespace MG.GIF
             for( var i = 0; i < tableSize; i++ )
             {
                 colourTable[ i ] = new Color32(
-                    ReadByte(),
-                    ReadByte(),
-                    ReadByte(),
+                    Input[ InputPos++ ],
+                    Input[ InputPos++ ],
+                    Input[ InputPos++ ],
                     0xFF
                 );
             }
@@ -238,10 +238,10 @@ namespace MG.GIF
             Images.Width  = ReadUInt16();
             Images.Height = ReadUInt16();
 
-            var flags     = (ImageFlag) ReadByte();
-            var bgIndex   = ReadByte();
+            var flags     = (ImageFlag) Input[ InputPos++ ];
+            var bgIndex   = Input[ InputPos++ ];
 
-            ReadByte(); // aspect ratio
+            InputPos++; // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
@@ -260,7 +260,7 @@ namespace MG.GIF
         {
             while( true )
             {
-                var block = (Block) ReadByte();
+                var block = (Block) Input[ InputPos++ ];
 
                 switch( block )
                 {
@@ -270,7 +270,7 @@ namespace MG.GIF
 
                     case Block.Extension:
 
-                        var ext = (Extension) ReadByte();
+                        var ext = (Extension) Input[ InputPos++ ];
 
                         switch( ext )
                         {
@@ -298,12 +298,12 @@ namespace MG.GIF
 
         private void SkipBlock()
         {
-            var blockSize = ReadByte();
+            var blockSize = Input[ InputPos++ ];
 
             while( blockSize != 0x00 )
             {
                 InputPos += blockSize;
-                blockSize = ReadByte();
+                blockSize = Input[ InputPos++ ];
             }
         }
 
@@ -312,16 +312,16 @@ namespace MG.GIF
 
         private void ReadControlBlock()
         {
-            var blockSize = ReadByte();
+            var blockSize = Input[ InputPos++ ];
 
-            var flags = ReadByte();
+            var flags = Input[ InputPos++ ];
 
             ControlDispose = (Disposal) ( flags & 0x1C );
             ControlDelay   = ReadUInt16();
 
             // has transparent colour?
 
-            var transparentColour = ReadByte();
+            var transparentColour = Input[ InputPos++ ];
 
             if( ( flags & 0x01 ) == 0x01 )
             {
@@ -332,7 +332,7 @@ namespace MG.GIF
                 TransparentIndex = 0xFFFF;
             }
 
-            ReadByte(); // terminator
+            InputPos++; // terminator
         }
 
         //------------------------------------------------------------------------------
@@ -390,7 +390,7 @@ namespace MG.GIF
             ImageWidth      = ReadUInt16();
             ImageHeight     = ReadUInt16();
 
-            var flags       = (ImageFlag) ReadByte();
+            var flags       = (ImageFlag) Input[ InputPos++ ];
             var interlaced  = flags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
@@ -408,7 +408,7 @@ namespace MG.GIF
                 ActiveColourTable = GlobalColourTable;
             }
 
-            LzwMinimumCodeSize = ReadByte();
+            LzwMinimumCodeSize = Input[ InputPos++ ];
 
             if( LzwMinimumCodeSize > 11 )
             {
@@ -500,14 +500,14 @@ namespace MG.GIF
             // get total size
 
             var totalBytes = 0;
-            var blockSize = ReadByte();
+            var blockSize = Input[ InputPos++ ];
 
             while( blockSize != 0x00 )
             {
                 totalBytes += blockSize;
                 InputPos += blockSize;
 
-                blockSize = ReadByte();
+                blockSize = Input[ InputPos++ ];
             }
 
             if( totalBytes == 0 )
@@ -521,14 +521,14 @@ namespace MG.GIF
             InputPos = startPos;
 
             var offset = 0;
-            blockSize = ReadByte();
+            blockSize = Input[ InputPos++ ];
 
             while( blockSize != 0x00 )
             {
                 Buffer.BlockCopy( Input, InputPos, buffer, offset, blockSize );
                 InputPos += blockSize;
                 offset += blockSize;
-                blockSize = ReadByte();
+                blockSize = Input[ InputPos++ ];
             }
 
             return Tuple.Create( buffer, totalBytes );

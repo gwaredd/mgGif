@@ -3,7 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 
-using BufferType = System.UInt32;
+using BufferType = System.UInt64;
 
 namespace MG.GIF
 {

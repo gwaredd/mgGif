@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 using BufferType = System.UInt64;
 
@@ -162,6 +162,21 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
+        byte[]  Input;
+        int     InputPos;
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        ushort ReadUInt16()
+        {
+            return (ushort) ( ( Input[ InputPos++ ] ) | Input[ InputPos++ ] << 8 );
+        }
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        byte ReadByte()
+        {
+            return Input[ InputPos++ ];
+        }
+
         public ImageList Decode( byte[] data )
         {
             if( data == null || data.Length <= 12 )
@@ -171,27 +186,27 @@ namespace MG.GIF
 
             Images = new ImageList();
 
-            using( var r = new BinaryReader( new MemoryStream( data ) ) )
-            {
-                ReadHeader( r );
-                ReadBlocks( r );
-            }
+            Input = data;
+            InputPos = 0;
+
+            ReadHeader();
+            ReadBlocks();
 
             return Images;
         }
 
         //------------------------------------------------------------------------------
 
-        private void ReadColourTable( Color32[] colourTable, ImageFlag flags, BinaryReader r )
+        private void ReadColourTable( Color32[] colourTable, ImageFlag flags )
         {
             var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
 
             for( var i = 0; i < tableSize; i++ )
             {
                 colourTable[ i ] = new Color32(
-                    r.ReadByte(),
-                    r.ReadByte(),
-                    r.ReadByte(),
+                    ReadByte(),
+                    ReadByte(),
+                    ReadByte(),
                     0xFF
                 );
             }
@@ -199,11 +214,19 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadHeader( BinaryReader r )
+        protected void ReadHeader()
         {
             // signature
+            Images.Version = new string( new char[] {
+                (char) Input[ 0 ],
+                (char) Input[ 1 ],
+                (char) Input[ 2 ],
+                (char) Input[ 3 ],
+                (char) Input[ 4 ],
+                (char) Input[ 5 ]
+            } );
 
-            Images.Version = new string( r.ReadChars( 6 ) );
+            InputPos = 6;
 
             if( Images.Version != "GIF87a" && Images.Version != "GIF89a" )
             {
@@ -212,17 +235,17 @@ namespace MG.GIF
 
             // read header
 
-            Images.Width  = r.ReadUInt16();
-            Images.Height = r.ReadUInt16();
+            Images.Width  = ReadUInt16();
+            Images.Height = ReadUInt16();
 
-            var flags     = (ImageFlag) r.ReadByte();
-            var bgIndex   = r.ReadByte();
+            var flags     = (ImageFlag) ReadByte();
+            var bgIndex   = ReadByte();
 
-            r.ReadByte(); // aspect ratio
+            ReadByte(); // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                ReadColourTable( GlobalColourTable, flags, r );
+                ReadColourTable( GlobalColourTable, flags );
 
                 if( bgIndex < GlobalColourTable.Length )
                 {
@@ -233,30 +256,30 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadBlocks( BinaryReader r )
+        protected void ReadBlocks()
         {
             while( true )
             {
-                var block = (Block) r.ReadByte();
+                var block = (Block) ReadByte();
 
                 switch( block )
                 {
                     case Block.Image:
-                        ReadImageBlock( r );
+                        ReadImageBlock();
                         break;
 
                     case Block.Extension:
 
-                        var ext = (Extension) r.ReadByte();
+                        var ext = (Extension) ReadByte();
 
                         switch( ext )
                         {
                             case Extension.GraphicControl:
-                                ReadControlBlock( r );
+                                ReadControlBlock();
                                 break;
 
                             default:
-                                SkipBlock( r );
+                                SkipBlock();
                                 break;
                         }
 
@@ -273,32 +296,32 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private void SkipBlock( BinaryReader r )
+        private void SkipBlock()
         {
-            var blockSize = r.ReadByte();
+            var blockSize = ReadByte();
 
             while( blockSize != 0x00 )
             {
-                r.BaseStream.Seek( blockSize, SeekOrigin.Current );
-                blockSize = r.ReadByte();
+                InputPos += blockSize;
+                blockSize = ReadByte();
             }
         }
 
 
         //------------------------------------------------------------------------------
 
-        private void ReadControlBlock( BinaryReader r )
+        private void ReadControlBlock()
         {
-            var blockSize = r.ReadByte();
+            var blockSize = ReadByte();
 
-            var flags = r.ReadByte();
+            var flags = ReadByte();
 
             ControlDispose = (Disposal) ( flags & 0x1C );
-            ControlDelay   = r.ReadUInt16();
+            ControlDelay   = ReadUInt16();
 
             // has transparent colour?
 
-            var transparentColour = r.ReadByte();
+            var transparentColour = ReadByte();
 
             if( ( flags & 0x01 ) == 0x01 )
             {
@@ -309,7 +332,7 @@ namespace MG.GIF
                 TransparentIndex = 0xFFFF;
             }
 
-            r.ReadByte(); // terminator
+            ReadByte(); // terminator
         }
 
         //------------------------------------------------------------------------------
@@ -358,16 +381,16 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadImageBlock( BinaryReader r )
+        protected void ReadImageBlock()
         {
             // read image block header
 
-            ImageLeft       = r.ReadUInt16();
-            ImageTop        = r.ReadUInt16();
-            ImageWidth      = r.ReadUInt16();
-            ImageHeight     = r.ReadUInt16();
+            ImageLeft       = ReadUInt16();
+            ImageTop        = ReadUInt16();
+            ImageWidth      = ReadUInt16();
+            ImageHeight     = ReadUInt16();
 
-            var flags       = (ImageFlag) r.ReadByte();
+            var flags       = (ImageFlag) ReadByte();
             var interlaced  = flags.HasFlag( ImageFlag.Interlaced );
 
             if( ImageWidth == 0 || ImageHeight == 0 )
@@ -377,7 +400,7 @@ namespace MG.GIF
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                ReadColourTable( LocalColourTable, flags, r );
+                ReadColourTable( LocalColourTable, flags );
                 ActiveColourTable = LocalColourTable;
             }
             else
@@ -385,7 +408,7 @@ namespace MG.GIF
                 ActiveColourTable = GlobalColourTable;
             }
 
-            LzwMinimumCodeSize = r.ReadByte();
+            LzwMinimumCodeSize = ReadByte();
 
             if( LzwMinimumCodeSize > 11 )
             {
@@ -395,7 +418,7 @@ namespace MG.GIF
 
             // compressed image data
 
-            var (lzwData, totalBytes) = ReadImageBlocks( r );
+            var (lzwData, totalBytes) = ReadImageBlocks();
 
 
             // this disposal method determines whether we start with a previous image
@@ -470,21 +493,21 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private Tuple<BufferType[],int> ReadImageBlocks( BinaryReader r )
+        private Tuple<BufferType[],int> ReadImageBlocks()
         {
-            var startPos = r.BaseStream.Position;
+            var startPos = InputPos;
 
             // get total size
 
             var totalBytes = 0;
-            var blockSize = r.ReadByte();
+            var blockSize = ReadByte();
 
             while( blockSize != 0x00 )
             {
                 totalBytes += blockSize;
-                r.BaseStream.Seek( blockSize, SeekOrigin.Current );
+                InputPos += blockSize;
 
-                blockSize = r.ReadByte();
+                blockSize = ReadByte();
             }
 
             if( totalBytes == 0 )
@@ -495,16 +518,17 @@ namespace MG.GIF
             // read bytes
 
             var buffer = new BufferType[ ( totalBytes + sizeof(BufferType) - 1 ) / sizeof(BufferType) ];
-            r.BaseStream.Seek( startPos, SeekOrigin.Begin );
+            InputPos = startPos;
 
             var offset = 0;
-            blockSize = r.ReadByte();
+            blockSize = ReadByte();
 
             while( blockSize != 0x00 )
             {
-                Buffer.BlockCopy( r.ReadBytes( blockSize ), 0, buffer, offset, blockSize );
+                Buffer.BlockCopy( Input, InputPos, buffer, offset, blockSize );
+                InputPos += blockSize;
                 offset += blockSize;
-                blockSize = r.ReadByte();
+                blockSize = ReadByte();
             }
 
             return Tuple.Create( buffer, totalBytes );

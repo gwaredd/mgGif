@@ -2,8 +2,8 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-//using UnityEngine.Profiling;
+
+using BufferType = System.UInt32;
 
 namespace MG.GIF
 {
@@ -396,7 +396,7 @@ namespace MG.GIF
 
             // compressed image data
 
-            var lzwData = ReadImageBlocks( r );
+            var (lzwData, totalBytes) = ReadImageBlocks( r );
 
 
             // this disposal method determines whether we start with a previous image
@@ -458,7 +458,7 @@ namespace MG.GIF
             img.Height         = Images.Height;
             img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW( lzwData );
+            img.RawImage       = DecompressLZW( lzwData, totalBytes );
 
             if( interlaced )
             {
@@ -471,7 +471,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private byte[] ReadImageBlocks( BinaryReader r )
+        private Tuple<BufferType[],int> ReadImageBlocks( BinaryReader r )
         {
             var startPos = r.BaseStream.Position;
 
@@ -495,7 +495,7 @@ namespace MG.GIF
 
             // read bytes
 
-            var buffer = new byte[ totalBytes ];
+            var buffer = new BufferType[ ( totalBytes + sizeof(BufferType) - 1 ) / sizeof(BufferType) ];
             r.BaseStream.Seek( startPos, SeekOrigin.Begin );
 
             var offset = 0;
@@ -503,13 +503,12 @@ namespace MG.GIF
 
             while( blockSize != 0x00 )
             {
-                r.Read( buffer, offset, blockSize );
+                Buffer.BlockCopy( r.ReadBytes( blockSize ), 0, buffer, offset, blockSize );
                 offset += blockSize;
-
                 blockSize = r.ReadByte();
             }
 
-            return buffer;
+            return Tuple.Create( buffer, totalBytes );
         }
 
         //------------------------------------------------------------------------------
@@ -530,29 +529,7 @@ namespace MG.GIF
         int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         Color32[]   OutputBuffer;
-        int         PixelNum;
 
-        // lookup colour based on code and write to correct position
-
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        private void WritePixel( ushort code )
-        {
-            var row = ImageTop + PixelNum / ImageWidth;
-
-            if( row < Images.Height )
-            {
-                var col = ImageLeft + PixelNum % ImageWidth;
-
-                if( col < Images.Width )
-                {
-                    // reverse row (flip in Y) because gif coordinates start at the top-left (unity is bottom-left)
-
-                    var index = ( Images.Height - row - 1 ) * Images.Width + col;
-
-                    OutputBuffer[ index ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
-                }
-            }
-        }
 
         //------------------------------------------------------------------------------
         // decompress LZW data and write colours to OutputBuffer
@@ -560,7 +537,7 @@ namespace MG.GIF
         // LzwCodeSize setup before call
         // OutputBuffer should be initialised before hand with default values (so despose and transparency works correctly)
 
-        private Color32[] DecompressLZW( byte[] lzwData )
+        private Color32[] DecompressLZW( BufferType[] lzwData, int totalBytes )
         {
             // setup codes
 
@@ -587,68 +564,49 @@ namespace MG.GIF
 
             // LZW decode loop
 
-            PixelNum = 0; // number of pixel being processed (used to find row and column of output)
+            int rowBase   = ( Images.Height - ImageTop - 1 ) * Images.Width;
+            int curCol    = ImageLeft;
+            int rightEdge = ImageLeft + ImageWidth;
 
-            int  previousCode      = -1;    // last code processed
-            int  bitsAvailable     = 0;     // number of bits available to read in the shift register
-            int  inputDataPosition = 0;     // next read position from the input stream
-            uint shiftRegister     = 0;     // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+            const uint  NoCode            = 0xFFFF;
+            uint        previousCode      = NoCode;    // last code processed
+            int         bitsAvailable     = 0;         // number of bits available to read in the shift register
+            int         lzwDataPos        = 0;         // next read position from the input stream
+            uint        mask              = (uint) ( LzwNextSize - 1 );
+            BufferType  shiftRegister     = 0;         // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-            while( inputDataPosition != lzwData.Length || bitsAvailable > 0 )
+            while( lzwDataPos != lzwData.Length || bitsAvailable > 0 )
             {
                 // get next code
 
-                // Profiler.BeginSample( "nextcode" );
+                uint curCode = (uint)( shiftRegister & mask );
+                bitsAvailable -= LzwCodeSize;
+                shiftRegister >>= LzwCodeSize;
 
-                int bitsLeftToRead = LzwCodeSize;
-
-                // consume any existing bits in the shift register
-
-                if( bitsAvailable > 0 )
+                if( bitsAvailable <= 0 && lzwDataPos < lzwData.Length )
                 {
-                    var numBits    = bitsLeftToRead < bitsAvailable ? bitsLeftToRead : bitsAvailable;
-                    shiftRegister  >>= numBits;
-                    bitsLeftToRead -= numBits;
-                    bitsAvailable  -= numBits;
-                }
+                    shiftRegister = lzwData[ lzwDataPos++ ];
+                    var numBits = 8 * ( lzwDataPos < lzwData.Length || totalBytes % sizeof(BufferType) == 0 ? sizeof(BufferType) : ( totalBytes % sizeof(BufferType) ) );
 
-                // add new bytes to shift register from input stream
-
-                if( bitsAvailable == 0 )
-                {
-                    if( inputDataPosition < lzwData.Length - 1 )
+                    if( bitsAvailable < 0 )
                     {
-                        // add two bytes if we can
-                        shiftRegister |= ( (uint) lzwData[ inputDataPosition++ ] << 16 ) | ( (uint) lzwData[ inputDataPosition++ ] << 24 );
-                        bitsAvailable = 16;
+                        var bitsRead = LzwCodeSize + bitsAvailable;
+                        curCode |= ( (uint) shiftRegister << bitsRead ) & mask;
+
+                        shiftRegister >>= -bitsAvailable;
+                        bitsAvailable = numBits + bitsAvailable;
                     }
-                    else if( inputDataPosition < lzwData.Length )
+                    else
                     {
-                        // or if just one byte left
-                        shiftRegister |= (uint) lzwData[ inputDataPosition++ ] << 16;
-                        bitsAvailable = 8;
+                        bitsAvailable = numBits;
                     }
                 }
 
-                // read any remaining bits required
-
-                if( bitsLeftToRead > 0 )
-                {
-                    shiftRegister >>= bitsLeftToRead;
-                    bitsAvailable -= bitsLeftToRead;
-                }
-
-                // mask out code bits and shift to end
-
-                int curCode = (int)( ( shiftRegister & 0x0000FFFF ) >> ( 16 - LzwCodeSize ) );
-
-                // Profiler.EndSample();
-
-                // Profiler.BeginSample( "process" );
 
                 // process code
 
-                ushort newCode = 0;
+                bool plusOne   = false;
+                int  bufferPos = 0;
 
                 if( curCode == LzwClearCode )
                 {
@@ -661,97 +619,91 @@ namespace MG.GIF
                     LzwCodeBufferLen = LzwNumCodes * 2;
 
                     // clear previous code
-                    previousCode = -1;
-
-                    // Profiler.EndSample();
+                    previousCode = NoCode;
+                    mask         = (uint) ( LzwNextSize - 1 );
 
                     continue;
                 }
                 else if( curCode == LzwEndCode )
                 {
-                    // Profiler.EndSample();
                     // stop
                     break;
                 }
                 else if( curCode < LzwNumCodes )
                 {
                     // write existing code
-
-                    // get position of code in buffer
-
-                    var bufferPos  = LzwCodeIndices[ curCode ];
-                    var codeLength = LzwCodeBuffer[ bufferPos++ ];
-
-                    // get first code
-
-                    newCode = LzwCodeBuffer[ bufferPos ];
-
-                    // output colours
-
-                    for( int i = 0; i < codeLength; i++ )
-                    {
-                        var code = LzwCodeBuffer[ bufferPos++ ];
-
-                        if( code != TransparentIndex )
-                        {
-                            WritePixel( code );
-                        }
-
-                        PixelNum++;
-                    }
+                    bufferPos = LzwCodeIndices[ curCode ];
                 }
-                else if( previousCode >= 0 )
+                else if( previousCode != NoCode )
                 {
                     // write previous code
-
-                    // get position of code in buffer
-
-                    var bufferPos  = LzwCodeIndices[ previousCode ];
-                    var codeLength = LzwCodeBuffer[ bufferPos++ ];
-
-                    // get first code
-
-                    newCode = LzwCodeBuffer[ bufferPos ];
-
-                    // output colours
-
-                    for( int i = 0; i < codeLength; i++ )
-                    {
-                        var code = LzwCodeBuffer[ bufferPos++ ];
-
-                        if( code != TransparentIndex )
-                        {
-                            WritePixel( code );
-                        }
-
-                        PixelNum++;
-                    }
-
-                    if( newCode != TransparentIndex )
-                    {
-                        WritePixel( newCode );
-                    }
-
-                    PixelNum++;
+                    bufferPos = LzwCodeIndices[ previousCode ];
+                    plusOne = true;
                 }
                 else
                 {
-                    // Profiler.EndSample();
                     continue;
                 }
 
-                // Profiler.EndSample();
 
-                // Profiler.BeginSample( "newcode" );
+                // output colours
+
+                var codeLength = LzwCodeBuffer[ bufferPos++ ];
+                var newCode    = LzwCodeBuffer[ bufferPos ];
+
+                for( int i = 0; i < codeLength; i++ )
+                {
+                    var code = LzwCodeBuffer[ bufferPos++ ];
+
+                    if( code != TransparentIndex && curCol < Images.Width )
+                    {
+                        OutputBuffer[ rowBase + curCol ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
+                    }
+
+                    curCol = ++curCol % rightEdge;
+
+                    if( curCol == 0 )
+                    {
+                        curCol = ImageLeft;
+                        rowBase -= Images.Width;
+
+                        if( rowBase < 0 )
+                        {
+                            return OutputBuffer;
+                        }
+                    }
+                }
+
+                if( plusOne  )
+                {
+                    if( newCode != TransparentIndex && curCol < Images.Width )
+                    {
+                        OutputBuffer[ rowBase + curCol ] = newCode < ActiveColourTable.Length ? ActiveColourTable[ newCode ] : BackgroundColour;
+                    }
+
+                    curCol = ++curCol % rightEdge;
+
+                    if( curCol == 0 )
+                    {
+                        curCol = ImageLeft;
+                        rowBase -= Images.Width;
+
+                        if( rowBase < 0 )
+                        {
+                            return OutputBuffer;
+                        }
+                    }
+                }
 
 
                 // create new code
 
-                if( previousCode >= 0 && LzwNumCodes != LzwCodeIndices.Length )
+                if( previousCode != NoCode && LzwNumCodes != LzwCodeIndices.Length )
                 {
                     // get previous code from buffer
-                    var bufferPosition = LzwCodeIndices[ previousCode ];
-                    var codeLength     = LzwCodeBuffer[ bufferPosition++ ];
+
+                    bufferPos  = LzwCodeIndices[ previousCode ];
+                    codeLength = LzwCodeBuffer[ bufferPos++ ];
 
                     // resize buffer if required (should be rare)
 
@@ -769,7 +721,7 @@ namespace MG.GIF
 
                     for( int i=0; i < codeLength; i++ )
                     {
-                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPosition + i ];
+                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPos + i ];
                     }
 
                     // append new code
@@ -781,14 +733,12 @@ namespace MG.GIF
 
                 if( LzwNumCodes >= LzwNextSize && LzwCodeSize < 12 )
                 {
-                    LzwCodeSize++;
-                    LzwNextSize = Pow2[ LzwCodeSize ];
+                    LzwNextSize = Pow2[ ++LzwCodeSize ];
+                    mask = (uint) ( LzwNextSize - 1 );
                 }
 
                 // remeber last code processed
                 previousCode = curCode;
-
-                // Profiler.EndSample();
             }
 
             return OutputBuffer;

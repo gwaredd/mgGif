@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 using BufferType = System.UInt32;
 
@@ -474,7 +473,6 @@ namespace MG.GIF
 
         private Tuple<BufferType[],int> ReadImageBlocks( BinaryReader r )
         {
-            
             var startPos = r.BaseStream.Position;
 
             // get total size
@@ -531,29 +529,7 @@ namespace MG.GIF
         int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         Color32[]   OutputBuffer;
-        int         PixelNum;
 
-        // lookup colour based on code and write to correct position
-
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        private void WritePixel( ushort code )
-        {
-            var row = ImageTop + PixelNum / ImageWidth;
-
-            if( row < Images.Height )
-            {
-                var col = ImageLeft + PixelNum % ImageWidth;
-
-                if( col < Images.Width )
-                {
-                    // reverse row (flip in Y) because gif coordinates start at the top-left (unity is bottom-left)
-
-                    var index = ( Images.Height - row - 1 ) * Images.Width + col;
-
-                    OutputBuffer[ index ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
-                }
-            }
-        }
 
         //------------------------------------------------------------------------------
         // decompress LZW data and write colours to OutputBuffer
@@ -588,7 +564,9 @@ namespace MG.GIF
 
             // LZW decode loop
 
-            PixelNum = 0; // number of pixel being processed (used to find row and column of output)
+            int rowBase   = ( Images.Height - ImageTop - 1 ) * Images.Width;
+            int curCol    = ImageLeft;
+            int rightEdge = ImageLeft + ImageWidth;
 
             const uint  NoCode            = 0xFFFF;
             uint        previousCode      = NoCode;    // last code processed
@@ -627,8 +605,8 @@ namespace MG.GIF
 
                 // process code
 
-                bool plusOne = false;
-                int  bufferPos;
+                bool plusOne   = false;
+                int  bufferPos = 0;
 
                 if( curCode == LzwClearCode )
                 {
@@ -654,7 +632,7 @@ namespace MG.GIF
                 else if( curCode < LzwNumCodes )
                 {
                     // write existing code
-                    bufferPos  = LzwCodeIndices[ curCode ];
+                    bufferPos = LzwCodeIndices[ curCode ];
                 }
                 else if( previousCode != NoCode )
                 {
@@ -669,6 +647,7 @@ namespace MG.GIF
 
 
                 // output colours
+
                 var codeLength = LzwCodeBuffer[ bufferPos++ ];
                 var newCode    = LzwCodeBuffer[ bufferPos ];
 
@@ -676,22 +655,44 @@ namespace MG.GIF
                 {
                     var code = LzwCodeBuffer[ bufferPos++ ];
 
-                    if( code != TransparentIndex )
+                    if( code != TransparentIndex && curCol < Images.Width )
                     {
-                        WritePixel( code );
+                        OutputBuffer[ rowBase + curCol ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
                     }
 
-                    PixelNum++;
+                    curCol = ++curCol % rightEdge;
+
+                    if( curCol == 0 )
+                    {
+                        curCol = ImageLeft;
+                        rowBase -= Images.Width;
+
+                        if( rowBase < 0 )
+                        {
+                            return OutputBuffer;
+                        }
+                    }
                 }
 
                 if( plusOne  )
                 {
-                    if( newCode != TransparentIndex )
+                    if( newCode != TransparentIndex && curCol < Images.Width )
                     {
-                        WritePixel( newCode );
+                        OutputBuffer[ rowBase + curCol ] = newCode < ActiveColourTable.Length ? ActiveColourTable[ newCode ] : BackgroundColour;
                     }
 
-                    PixelNum++;
+                    curCol = ++curCol % rightEdge;
+
+                    if( curCol == 0 )
+                    {
+                        curCol = ImageLeft;
+                        rowBase -= Images.Width;
+
+                        if( rowBase < 0 )
+                        {
+                            return OutputBuffer;
+                        }
+                    }
                 }
 
 

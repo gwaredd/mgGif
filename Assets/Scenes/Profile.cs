@@ -5,6 +5,10 @@ using UnityEngine.Profiling;
 
 public class Profile : MonoBehaviour
 {
+    public float SampleWaitTime = 0.25f;
+    public long  ThrottleWait   = 50;
+    public int   NumSamples     = 20;
+
     private int     mCount;
     private float   mTimer;
     private long    mTotal;
@@ -12,12 +16,17 @@ public class Profile : MonoBehaviour
     void Start()
     {
         mCount = 0;
-        mTimer = 2.0f;
+        mTimer = SampleWaitTime;
         mTotal = 0;
     }
 
     void Update()
     {
+        if( mCount == NumSamples )
+        {
+            return;
+        }
+
         mTimer -= Time.deltaTime;
 
         Throttle();
@@ -25,7 +34,7 @@ public class Profile : MonoBehaviour
         if( mTimer < 0.0f )
         {
             Run( ++mCount );
-            mTimer = 1.0f;
+            mTimer = SampleWaitTime;
         }
     }
 
@@ -34,7 +43,7 @@ public class Profile : MonoBehaviour
         var sw = new Stopwatch();
         sw.Start();
 
-        while( sw.ElapsedMilliseconds < 100 )
+        while( sw.ElapsedMilliseconds < ThrottleWait )
         {
         }
 

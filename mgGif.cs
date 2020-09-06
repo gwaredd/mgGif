@@ -7,6 +7,8 @@ using BufferType = System.UInt64;
 
 namespace MG.GIF
 {
+    ////////////////////////////////////////////////////////////////////////////////
+
     public enum Disposal
     {
         None              = 0x00,
@@ -15,6 +17,9 @@ namespace MG.GIF
         ReturnToPrevious  = 0x0C
     }
 
+
+    ////////////////////////////////////////////////////////////////////////////////
+    
     public class Image
     {
         public int       Width;
@@ -36,6 +41,9 @@ namespace MG.GIF
             return tex;
         }
     }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
 
     public class ImageList
     {
@@ -97,6 +105,9 @@ namespace MG.GIF
         }
     }
 
+
+    ////////////////////////////////////////////////////////////////////////////////
+
     public class Decoder
     {
         [Flags]
@@ -123,19 +134,26 @@ namespace MG.GIF
             ApplicationData = 0xFF
         }
 
+        const uint          NoCode         = 0xFFFF;
+        const ushort        NoTransparency = 0xFFFF;
+
         private ImageList   Images;
 
         // colour
         private Color32[]   GlobalColourTable = new Color32[ 4096 ];
         private Color32[]   LocalColourTable  = new Color32[ 4096 ];
         private Color32[]   ActiveColourTable = null;
-        private Color32     BackgroundColour  = new Color32(0x00,0x00,0x00,0xFF);
-        private Color32     ClearColour       = new Color32(0x00,0x00,0x00,0x00);
-        private ushort      TransparentIndex  = 0xFFFF;
+        private Color32     BackgroundColour  = new Color32( 0x00,0x00,0x00,0xFF );
+        private Color32     ClearColour       = new Color32( 0x00,0x00,0x00,0x00 );
+        private ushort      TransparentIndex  = NoTransparency;
 
         // current controls
         private ushort      ControlDelay      = 0;
         private Disposal    ControlDispose    = Disposal.None;
+
+        // global image
+        private ushort      GlobalWidth;
+        private ushort      GlobalHeight;
 
         // current image
         private ushort      ImageLeft;
@@ -144,50 +162,40 @@ namespace MG.GIF
         private ushort      ImageHeight;
         private byte        LzwMinimumCodeSize;
 
+        //------------------------------------------------------------------------------
+
+        byte[]  Data;
+        int     D;
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        ushort ReadUInt16()
+        {
+            return (ushort) ( ( Data[ D++ ] ) | Data[ D++ ] << 8 );
+        }
+
+        public Decoder( byte[] data )
+        {
+            Data = data;
+            D    = 0;
+        }
 
         //------------------------------------------------------------------------------
 
         public static ImageList Parse( byte[] data )
         {
-            try
-            {
-                return new Decoder().Decode( data );
-            }
-            catch( Exception e )
-            {
-                UnityEngine.Debug.Log( e.Message );
-                return null;
-            }
+            return new Decoder( data ).Decode();
         }
 
         //------------------------------------------------------------------------------
 
-        byte[]  Input;
-        int     InputPos;
-
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        ushort ReadUInt16()
+        public ImageList Decode()
         {
-            return (ushort) ( ( Input[ InputPos++ ] ) | Input[ InputPos++ ] << 8 );
-        }
-
-        //[MethodImpl( MethodImplOptions.AggressiveInlining )]
-        //byte Input[ InputPos++ ]
-        //{
-        //    return Input[ InputPos++ ];
-        //}
-
-        public ImageList Decode( byte[] data )
-        {
-            if( data == null || data.Length <= 12 )
+            if( Data == null || Data.Length <= 12 )
             {
                 throw new Exception( "Invalid data" );
             }
 
             Images = new ImageList();
-
-            Input = data;
-            InputPos = 0;
 
             ReadHeader();
             ReadBlocks();
@@ -204,9 +212,9 @@ namespace MG.GIF
             for( var i = 0; i < tableSize; i++ )
             {
                 colourTable[ i ] = new Color32(
-                    Input[ InputPos++ ],
-                    Input[ InputPos++ ],
-                    Input[ InputPos++ ],
+                    Data[ D++ ],
+                    Data[ D++ ],
+                    Data[ D++ ],
                     0xFF
                 );
             }
@@ -218,15 +226,15 @@ namespace MG.GIF
         {
             // signature
             Images.Version = new string( new char[] {
-                (char) Input[ 0 ],
-                (char) Input[ 1 ],
-                (char) Input[ 2 ],
-                (char) Input[ 3 ],
-                (char) Input[ 4 ],
-                (char) Input[ 5 ]
-            } );
+                (char) Data[ 0 ],
+                (char) Data[ 1 ],
+                (char) Data[ 2 ],
+                (char) Data[ 3 ],
+                (char) Data[ 4 ],
+                (char) Data[ 5 ]
+            });
 
-            InputPos = 6;
+            D = 6;
 
             if( Images.Version != "GIF87a" && Images.Version != "GIF89a" )
             {
@@ -235,13 +243,16 @@ namespace MG.GIF
 
             // read header
 
-            Images.Width  = ReadUInt16();
-            Images.Height = ReadUInt16();
+            GlobalWidth  = ReadUInt16();
+            GlobalHeight = ReadUInt16();
 
-            var flags     = (ImageFlag) Input[ InputPos++ ];
-            var bgIndex   = Input[ InputPos++ ];
+            Images.Width  = GlobalWidth;
+            Images.Height = GlobalHeight;
 
-            InputPos++; // aspect ratio
+            var flags     = (ImageFlag) Data[ D++ ];
+            var bgIndex   = Data[ D++ ];
+
+            D++; // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
@@ -260,7 +271,7 @@ namespace MG.GIF
         {
             while( true )
             {
-                var block = (Block) Input[ InputPos++ ];
+                var block = (Block) Data[ D++ ];
 
                 switch( block )
                 {
@@ -270,7 +281,7 @@ namespace MG.GIF
 
                     case Block.Extension:
 
-                        var ext = (Extension) Input[ InputPos++ ];
+                        var ext = (Extension) Data[ D++ ];
 
                         switch( ext )
                         {
@@ -298,12 +309,12 @@ namespace MG.GIF
 
         private void SkipBlock()
         {
-            var blockSize = Input[ InputPos++ ];
+            var blockSize = Data[ D++ ];
 
             while( blockSize != 0x00 )
             {
-                InputPos += blockSize;
-                blockSize = Input[ InputPos++ ];
+                D += blockSize;
+                blockSize = Data[ D++ ];
             }
         }
 
@@ -312,16 +323,16 @@ namespace MG.GIF
 
         private void ReadControlBlock()
         {
-            var blockSize = Input[ InputPos++ ];
+            D++; // block size
 
-            var flags = Input[ InputPos++ ];
+            var flags = Data[ D++ ];
 
             ControlDispose = (Disposal) ( flags & 0x1C );
             ControlDelay   = ReadUInt16();
 
             // has transparent colour?
 
-            var transparentColour = Input[ InputPos++ ];
+            var transparentColour = Data[ D++ ];
 
             if( ( flags & 0x01 ) == 0x01 )
             {
@@ -329,10 +340,10 @@ namespace MG.GIF
             }
             else
             {
-                TransparentIndex = 0xFFFF;
+                TransparentIndex = NoTransparency;
             }
 
-            InputPos++; // terminator
+            D++; // terminator
         }
 
         //------------------------------------------------------------------------------
@@ -389,9 +400,7 @@ namespace MG.GIF
             ImageTop        = ReadUInt16();
             ImageWidth      = ReadUInt16();
             ImageHeight     = ReadUInt16();
-
-            var flags       = (ImageFlag) Input[ InputPos++ ];
-            var interlaced  = flags.HasFlag( ImageFlag.Interlaced );
+            var flags       = (ImageFlag) Data[ D++ ];
 
             if( ImageWidth == 0 || ImageHeight == 0 )
             {
@@ -408,18 +417,12 @@ namespace MG.GIF
                 ActiveColourTable = GlobalColourTable;
             }
 
-            LzwMinimumCodeSize = Input[ InputPos++ ];
+            LzwMinimumCodeSize = Data[ D++ ];
 
             if( LzwMinimumCodeSize > 11 )
             {
                 LzwMinimumCodeSize = 11;
             }
-
-
-            // compressed image data
-
-            var (lzwData, totalBytes) = ReadImageBlocks();
-
 
             // this disposal method determines whether we start with a previous image
 
@@ -462,9 +465,9 @@ namespace MG.GIF
 
             if( OutputBuffer == null )
             {
-                var size = Images.Width * Images.Height;
+                var size = GlobalWidth * GlobalHeight;
 
-                OutputBuffer = new Color32[size];
+                OutputBuffer = new Color32[ size ];
 
                 for( int i = 0; i < size; i++ )
                 {
@@ -472,17 +475,22 @@ namespace MG.GIF
                 }
             }
 
+            // compressed image data
+
+            var (lzwData, totalBytes) = ReadImageBlocks();
+
+
             // create image
 
             var img = new Image();
 
-            img.Width          = Images.Width;
-            img.Height         = Images.Height;
+            img.Width          = GlobalWidth;
+            img.Height         = GlobalHeight;
             img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
             img.RawImage       = DecompressLZW( lzwData, totalBytes );
 
-            if( interlaced )
+            if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
                 img.RawImage = Deinterlace( img.RawImage, ImageWidth );
             }
@@ -495,19 +503,19 @@ namespace MG.GIF
 
         private Tuple<BufferType[],int> ReadImageBlocks()
         {
-            var startPos = InputPos;
+            var startPos = D;
 
             // get total size
 
             var totalBytes = 0;
-            var blockSize = Input[ InputPos++ ];
+            var blockSize = Data[ D++ ];
 
             while( blockSize != 0x00 )
             {
                 totalBytes += blockSize;
-                InputPos += blockSize;
+                D += blockSize;
 
-                blockSize = Input[ InputPos++ ];
+                blockSize = Data[ D++ ];
             }
 
             if( totalBytes == 0 )
@@ -518,17 +526,17 @@ namespace MG.GIF
             // read bytes
 
             var buffer = new BufferType[ ( totalBytes + sizeof(BufferType) - 1 ) / sizeof(BufferType) ];
-            InputPos = startPos;
+            D = startPos;
 
             var offset = 0;
-            blockSize = Input[ InputPos++ ];
+            blockSize = Data[ D++ ];
 
             while( blockSize != 0x00 )
             {
-                Buffer.BlockCopy( Input, InputPos, buffer, offset, blockSize );
-                InputPos += blockSize;
+                Buffer.BlockCopy( Data, D, buffer, offset, blockSize );
+                D += blockSize;
                 offset += blockSize;
-                blockSize = Input[ InputPos++ ];
+                blockSize = Data[ D++ ];
             }
 
             return Tuple.Create( buffer, totalBytes );
@@ -536,8 +544,9 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
         // LZW
-        // the code spends 95% of the time here so optimised for performance using 
-        // pre-allocated buffers (cut down on allocation overhead)
+        // optimised for performance using pre-allocated buffers (cut down on allocation overhead)
+
+        int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         int         LzwClearCode;
         int         LzwEndCode;
@@ -547,9 +556,8 @@ namespace MG.GIF
 
         int         LzwNumCodes      = 0;
         int[]       LzwCodeIndices   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-        ushort[]    LzwCodeBuffer    = new ushort[ 64 * 1024 ];     // 64k buffer for codes - should be plenty but we dynamically resize if required
+        ushort[]    LzwCodeBuffer    = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
         int         LzwCodeBufferLen = 0;                           // end of data (next write position)
-        int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         Color32[]   OutputBuffer;
 
@@ -584,14 +592,14 @@ namespace MG.GIF
                 LzwCodeBuffer[ LzwCodeBufferLen++ ] = i; // code
             }
 
+            // output write position
 
-            // LZW decode loop
-
-            int rowBase   = ( Images.Height - ImageTop - 1 ) * Images.Width;
+            int rowBase   = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
             int curCol    = ImageLeft;
             int rightEdge = ImageLeft + ImageWidth;
 
-            const uint  NoCode            = 0xFFFF;
+            // LZW decode loop
+
             uint        previousCode      = NoCode;    // last code processed
             int         bitsAvailable     = 0;         // number of bits available to read in the shift register
             int         lzwDataPos        = 0;         // next read position from the input stream
@@ -600,6 +608,14 @@ namespace MG.GIF
 
             while( lzwDataPos != lzwData.Length || bitsAvailable > 0 )
             {
+                //while( blockSize != 0x00 )
+                //{
+                //    totalBytes += blockSize;
+                //    D += blockSize;
+
+                //    blockSize = Data[ D++ ];
+                //}
+
                 // get next code
 
                 uint curCode = (uint)( shiftRegister & mask );
@@ -678,7 +694,7 @@ namespace MG.GIF
                 {
                     var code = LzwCodeBuffer[ bufferPos++ ];
 
-                    if( code != TransparentIndex && curCol < Images.Width )
+                    if( code != TransparentIndex && curCol < GlobalWidth )
                     {
                         OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ code ];
                     }
@@ -688,7 +704,7 @@ namespace MG.GIF
                     if( curCol == 0 )
                     {
                         curCol = ImageLeft;
-                        rowBase -= Images.Width;
+                        rowBase -= GlobalWidth;
 
                         if( rowBase < 0 )
                         {
@@ -699,7 +715,7 @@ namespace MG.GIF
 
                 if( plusOne )
                 {
-                    if( newCode != TransparentIndex && curCol < Images.Width )
+                    if( newCode != TransparentIndex && curCol < GlobalWidth )
                     {
                         OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ newCode ];
                     }
@@ -709,7 +725,7 @@ namespace MG.GIF
                     if( curCol == 0 )
                     {
                         curCol = ImageLeft;
-                        rowBase -= Images.Width;
+                        rowBase -= GlobalWidth;
 
                         if( rowBase < 0 )
                         {
@@ -744,7 +760,7 @@ namespace MG.GIF
 
                     for( int i=0; i < codeLength; i++ )
                     {
-                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPos + i ];
+                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPos++ ];
                     }
 
                     // append new code

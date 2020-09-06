@@ -126,7 +126,8 @@ namespace MG.GIF
         private ImageList   Images;
 
         // colour
-        private Color32[]   GlobalColourTable = null;
+        private Color32[]   GlobalColourTable = new Color32[ 4096 ];
+        private Color32[]   LocalColourTable  = new Color32[ 4096 ];
         private Color32[]   ActiveColourTable = null;
         private Color32     BackgroundColour  = new Color32(0x00,0x00,0x00,0xFF);
         private Color32     ClearColour       = new Color32(0x00,0x00,0x00,0x00);
@@ -181,22 +182,19 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private Color32[] ReadColourTable( ImageFlag flags, BinaryReader r )
+        private void ReadColourTable( Color32[] colourTable, ImageFlag flags, BinaryReader r )
         {
-            var tableSize   = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
-            var colourTable = new Color32[ 4092 ];
+            var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
 
             for( var i = 0; i < tableSize; i++ )
             {
-                colourTable[i] = new Color32(
+                colourTable[ i ] = new Color32(
                     r.ReadByte(),
                     r.ReadByte(),
                     r.ReadByte(),
                     0xFF
                 );
             }
-
-            return colourTable;
         }
 
         //------------------------------------------------------------------------------
@@ -224,7 +222,7 @@ namespace MG.GIF
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                GlobalColourTable = ReadColourTable( flags, r );
+                ReadColourTable( GlobalColourTable, flags, r );
 
                 if( bgIndex < GlobalColourTable.Length )
                 {
@@ -379,7 +377,8 @@ namespace MG.GIF
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
-                ActiveColourTable = ReadColourTable( flags, r );
+                ReadColourTable( LocalColourTable, flags, r );
+                ActiveColourTable = LocalColourTable;
             }
             else
             {

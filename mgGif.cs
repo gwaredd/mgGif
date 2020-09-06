@@ -184,7 +184,7 @@ namespace MG.GIF
         private Color32[] ReadColourTable( ImageFlag flags, BinaryReader r )
         {
             var tableSize   = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
-            var colourTable = new Color32[ tableSize ];
+            var colourTable = new Color32[ 4092 ];
 
             for( var i = 0; i < tableSize; i++ )
             {
@@ -657,7 +657,7 @@ namespace MG.GIF
 
                     if( code != TransparentIndex && curCol < Images.Width )
                     {
-                        OutputBuffer[ rowBase + curCol ] = code < ActiveColourTable.Length ? ActiveColourTable[ code ] : BackgroundColour;
+                        OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ code ];
                     }
 
                     curCol = ++curCol % rightEdge;
@@ -674,11 +674,11 @@ namespace MG.GIF
                     }
                 }
 
-                if( plusOne  )
+                if( plusOne )
                 {
                     if( newCode != TransparentIndex && curCol < Images.Width )
                     {
-                        OutputBuffer[ rowBase + curCol ] = newCode < ActiveColourTable.Length ? ActiveColourTable[ newCode ] : BackgroundColour;
+                        OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ newCode ];
                     }
 
                     curCol = ++curCol % rightEdge;

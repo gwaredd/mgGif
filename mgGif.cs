@@ -167,16 +167,16 @@ namespace MG.GIF
         byte[]  Data;
         int     D;
 
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        ushort ReadUInt16()
-        {
-            return (ushort) ( ( Data[ D++ ] ) | Data[ D++ ] << 8 );
-        }
-
         public Decoder( byte[] data )
         {
             Data = data;
             D    = 0;
+        }
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        ushort ReadUInt16()
+        {
+            return (ushort) ( Data[ D++ ] | Data[ D++ ] << 8 );
         }
 
         //------------------------------------------------------------------------------
@@ -699,9 +699,7 @@ namespace MG.GIF
                         OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ code ];
                     }
 
-                    curCol = ++curCol % rightEdge;
-
-                    if( curCol == 0 )
+                    if( ++curCol == rightEdge )
                     {
                         curCol = ImageLeft;
                         rowBase -= GlobalWidth;
@@ -720,9 +718,7 @@ namespace MG.GIF
                         OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ newCode ];
                     }
 
-                    curCol = ++curCol % rightEdge;
-
-                    if( curCol == 0 )
+                    if( ++curCol == rightEdge )
                     {
                         curCol = ImageLeft;
                         rowBase -= GlobalWidth;

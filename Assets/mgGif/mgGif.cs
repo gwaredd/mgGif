@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -477,7 +477,7 @@ namespace MG.GIF
 
             // compressed image data
 
-            var (lzwData, totalBytes) = ReadImageBlocks();
+            //var (lzwData, totalBytes) = ReadImageBlocks();
 
 
             // create image
@@ -488,7 +488,7 @@ namespace MG.GIF
             img.Height         = GlobalHeight;
             img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW( lzwData, totalBytes );
+            img.RawImage       = DecompressLZW();// lzwData, totalBytes );
 
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
@@ -568,7 +568,7 @@ namespace MG.GIF
         // LzwCodeSize setup before call
         // OutputBuffer should be initialised before hand with default values (so despose and transparency works correctly)
 
-        private Color32[] DecompressLZW( BufferType[] lzwData, int totalBytes )
+        private Color32[] DecompressLZW()
         {
             // setup codes
 
@@ -600,24 +600,45 @@ namespace MG.GIF
 
             // LZW decode loop
 
+            //int         lzwDataPos        = 0;         // next read position from the input stream
+
             uint        previousCode      = NoCode;    // last code processed
-            int         bitsAvailable     = 0;         // number of bits available to read in the shift register
-            int         lzwDataPos        = 0;         // next read position from the input stream
             uint        mask              = (uint) ( LzwNextSize - 1 );
-            BufferType  shiftRegister     = 0;         // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+            uint        shiftRegister     = 0;         // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-            while( lzwDataPos != lzwData.Length || bitsAvailable > 0 )
+            int         bitsAvailable     = 0;         // number of bits available to read in the shift register
+            int         bytesAvailable    = 0;
+
+            while( true )
             {
-                //while( blockSize != 0x00 )
-                //{
-                //    totalBytes += blockSize;
-                //    D += blockSize;
+                while( bitsAvailable < LzwCodeSize )
+                {
+                    // if start of new block
 
-                //    blockSize = Data[ D++ ];
-                //}
+                    if( bytesAvailable == 0 )
+                    {
+                        // read blocksize
+                        bytesAvailable = Data[ D++ ];
+
+                        // end of stream
+                        if( bytesAvailable == 0 )
+                        {
+                            goto Exit;
+                        }
+                    }
+
+                    shiftRegister |= (uint) Data[ D++ ] << bitsAvailable;
+
+                    bytesAvailable--;
+                    bitsAvailable += 8;
+                }
+
+                uint curCode = shiftRegister & mask;
+                bitsAvailable -= LzwCodeSize;
+                shiftRegister >>= LzwCodeSize;
 
                 // get next code
-
+                /*
                 uint curCode = (uint)( shiftRegister & mask );
                 bitsAvailable -= LzwCodeSize;
                 shiftRegister >>= LzwCodeSize;
@@ -640,6 +661,7 @@ namespace MG.GIF
                         bitsAvailable = numBits;
                     }
                 }
+                */
 
 
                 // process code
@@ -706,7 +728,7 @@ namespace MG.GIF
 
                         if( rowBase < 0 )
                         {
-                            return OutputBuffer;
+                            goto Exit;
                         }
                     }
                 }
@@ -725,7 +747,7 @@ namespace MG.GIF
 
                         if( rowBase < 0 )
                         {
-                            return OutputBuffer;
+                            goto Exit;
                         }
                     }
                 }
@@ -774,6 +796,22 @@ namespace MG.GIF
 
                 // remeber last code processed
                 previousCode = curCode;
+            }
+
+        Exit:
+
+            // skip any remaining bytes
+
+            D += bytesAvailable;
+
+            // consume any remaining blocks
+
+            bytesAvailable = Data[ D++ ];
+
+            while( bytesAvailable > 0 )
+            {
+                D += bytesAvailable;
+                bytesAvailable = Data[ D++ ];
             }
 
             return OutputBuffer;

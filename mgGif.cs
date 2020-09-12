@@ -623,7 +623,7 @@ namespace MG.GIF
                         // end of stream
                         if( bytesAvailable == 0 )
                         {
-                            goto Exit;
+                            return OutputBuffer;
                         }
                     }
 

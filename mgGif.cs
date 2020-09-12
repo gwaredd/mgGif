@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-using BufferType = System.UInt64;
-
 namespace MG.GIF
 {
     ////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +14,6 @@ namespace MG.GIF
         RestoreBackground = 0x08,
         ReturnToPrevious  = 0x0C
     }
-
 
     ////////////////////////////////////////////////////////////////////////////////
     
@@ -475,11 +472,6 @@ namespace MG.GIF
                 }
             }
 
-            // compressed image data
-
-            //var (lzwData, totalBytes) = ReadImageBlocks();
-
-
             // create image
 
             var img = new Image();
@@ -488,7 +480,7 @@ namespace MG.GIF
             img.Height         = GlobalHeight;
             img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
             img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW();// lzwData, totalBytes );
+            img.RawImage       = DecompressLZW();
 
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
@@ -496,50 +488,6 @@ namespace MG.GIF
             }
 
             Images.Add( img );
-        }
-
-
-        //------------------------------------------------------------------------------
-
-        private Tuple<BufferType[],int> ReadImageBlocks()
-        {
-            var startPos = D;
-
-            // get total size
-
-            var totalBytes = 0;
-            var blockSize = Data[ D++ ];
-
-            while( blockSize != 0x00 )
-            {
-                totalBytes += blockSize;
-                D += blockSize;
-
-                blockSize = Data[ D++ ];
-            }
-
-            if( totalBytes == 0 )
-            {
-                return null;
-            }
-
-            // read bytes
-
-            var buffer = new BufferType[ ( totalBytes + sizeof(BufferType) - 1 ) / sizeof(BufferType) ];
-            D = startPos;
-
-            var offset = 0;
-            blockSize = Data[ D++ ];
-
-            while( blockSize != 0x00 )
-            {
-                Buffer.BlockCopy( Data, D, buffer, offset, blockSize );
-                D += blockSize;
-                offset += blockSize;
-                blockSize = Data[ D++ ];
-            }
-
-            return Tuple.Create( buffer, totalBytes );
         }
 
         //------------------------------------------------------------------------------
@@ -600,17 +548,17 @@ namespace MG.GIF
 
             // LZW decode loop
 
-            //int         lzwDataPos        = 0;         // next read position from the input stream
+            uint previousCode      = NoCode; // last code processed
+            uint mask              = (uint) ( LzwNextSize - 1 ); // mask out code bits
+            uint shiftRegister     = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-            uint        previousCode      = NoCode;    // last code processed
-            uint        mask              = (uint) ( LzwNextSize - 1 );
-            uint        shiftRegister     = 0;         // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
-
-            int         bitsAvailable     = 0;         // number of bits available to read in the shift register
-            int         bytesAvailable    = 0;
+            int  bitsAvailable     = 0; // number of bits available to read in the shift register
+            int  bytesAvailable    = 0; // number of bytes left in current block
 
             while( true )
             {
+                // load shift register
+
                 while( bitsAvailable < LzwCodeSize )
                 {
                     // if start of new block

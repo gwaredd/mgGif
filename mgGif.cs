@@ -559,6 +559,7 @@ namespace MG.GIF
             {
                 // load shift register
 
+                /**/
                 while( bitsAvailable < LzwCodeSize )
                 {
                     // if start of new block
@@ -575,10 +576,18 @@ namespace MG.GIF
                         }
                     }
 
-                    shiftRegister |= (uint) Data[ D++ ] << bitsAvailable;
-
-                    bytesAvailable--;
-                    bitsAvailable += 8;
+                    if( bytesAvailable > 1 )
+                    {
+                        shiftRegister |= (uint) ( Data[ D++ ] | Data[ D++ ] << 8 ) << bitsAvailable;
+                        bytesAvailable-= 2;
+                        bitsAvailable += 16;
+                    }
+                    else
+                    {
+                        shiftRegister |= (uint) Data[ D++ ] << bitsAvailable;
+                        bytesAvailable--;
+                        bitsAvailable += 8;
+                    }
                 }
 
                 uint curCode = shiftRegister & mask;
@@ -586,13 +595,26 @@ namespace MG.GIF
                 shiftRegister >>= LzwCodeSize;
 
                 // get next code
-                /*
+                /*/
+
                 uint curCode = (uint)( shiftRegister & mask );
                 bitsAvailable -= LzwCodeSize;
                 shiftRegister >>= LzwCodeSize;
 
-                if( bitsAvailable <= 0 && lzwDataPos < lzwData.Length )
+                if( bitsAvailable <= 0 )
                 {
+                    //if( bytesAvailable == 0 )
+                    //{
+                    //    // read blocksize
+                    //    bytesAvailable = Data[ D++ ];
+
+                    //    // end of stream
+                    //    if( bytesAvailable == 0 )
+                    //    {
+                    //        return OutputBuffer;
+                    //    }
+                    //}
+
                     shiftRegister = lzwData[ lzwDataPos++ ];
                     var numBits = 8 * ( lzwDataPos < lzwData.Length || totalBytes % sizeof(BufferType) == 0 ? sizeof(BufferType) : ( totalBytes % sizeof(BufferType) ) );
 
@@ -609,7 +631,7 @@ namespace MG.GIF
                         bitsAvailable = numBits;
                     }
                 }
-                */
+                /**/
 
 
                 // process code

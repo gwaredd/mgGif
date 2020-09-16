@@ -222,6 +222,7 @@ namespace MG.GIF
         protected void ReadHeader()
         {
             // signature
+
             Images.Version = new string( new char[] {
                 (char) Data[ 0 ],
                 (char) Data[ 1 ],
@@ -388,6 +389,54 @@ namespace MG.GIF
         }
 
         //------------------------------------------------------------------------------
+
+        protected void ReadImageBlock()
+        {
+            // read image block header
+
+            ImageLeft   = ReadUInt16();
+            ImageTop    = ReadUInt16();
+            ImageWidth  = ReadUInt16();
+            ImageHeight = ReadUInt16();
+            var flags   = (ImageFlag) Data[ D++ ];
+
+            if( ImageWidth == 0 || ImageHeight == 0 )
+            {
+                return;
+            }
+
+            if( flags.HasFlag( ImageFlag.ColourTable ) )
+            {
+                ReadColourTable( LocalColourTable, flags );
+                ActiveColourTable = LocalColourTable;
+            }
+            else
+            {
+                ActiveColourTable = GlobalColourTable;
+            }
+
+            var minimumCodeSize = Data[ D++ ];
+
+            // create image
+
+            var img = new Image();
+
+            img.Width          = GlobalWidth;
+            img.Height         = GlobalHeight;
+            img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
+            img.DisposalMethod = ControlDispose;
+            img.RawImage       = DecompressLZW( minimumCodeSize <= 11 ? minimumCodeSize : 11 );
+
+            if( flags.HasFlag( ImageFlag.Interlaced ) )
+            {
+                img.RawImage = Deinterlace( img.RawImage, ImageWidth );
+            }
+
+            Images.Add( img );
+        }
+
+
+        //------------------------------------------------------------------------------
         // disposal method determines whether we start with a previous image
 
         Color32[] CreateBuffer()
@@ -428,105 +477,38 @@ namespace MG.GIF
             return new Color32[ GlobalWidth * GlobalHeight ];
         }
 
-        protected void ReadImageBlock()
-        {
-            // read image block header
-
-            ImageLeft       = ReadUInt16();
-            ImageTop        = ReadUInt16();
-            ImageWidth      = ReadUInt16();
-            ImageHeight     = ReadUInt16();
-            var flags       = (ImageFlag) Data[ D++ ];
-
-            if( ImageWidth == 0 || ImageHeight == 0 )
-            {
-                return;
-            }
-
-            if( flags.HasFlag( ImageFlag.ColourTable ) )
-            {
-                ReadColourTable( LocalColourTable, flags );
-                ActiveColourTable = LocalColourTable;
-            }
-            else
-            {
-                ActiveColourTable = GlobalColourTable;
-            }
-
-            LzwMinimumCodeSize = Data[ D++ ];
-
-            if( LzwMinimumCodeSize > 11 )
-            {
-                LzwMinimumCodeSize = 11;
-            }
-
-            // create image
-
-            var img = new Image();
-
-            img.Width          = GlobalWidth;
-            img.Height         = GlobalHeight;
-            img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
-            img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW();
-
-            if( flags.HasFlag( ImageFlag.Interlaced ) )
-            {
-                img.RawImage = Deinterlace( img.RawImage, ImageWidth );
-            }
-
-            Images.Add( img );
-        }
-
         //------------------------------------------------------------------------------
-        // LZW
-        // optimised for performance using pre-allocated buffers (cut down on allocation overhead)
+        // DecompressLZW()
+        //  LzwCodeSize setup before call
+        //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
 
-        int[]       Pow2             = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        int[]    Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
-        int         LzwClearCode;
-        int         LzwEndCode;
-        int         LzwCodeSize;
-        int         LzwNextSize;
-        int         LzwMaximumCodeSize;
+        int[]    codeOffsets = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
+        ushort[] codes       = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
-        int         LzwNumCodes      = 0;
-        int[]       LzwCodeIndices   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-        ushort[]    LzwCodeBuffer    = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
-        int         LzwCodeBufferLen = 0;                           // end of data (next write position)
-
-        Color32[]   OutputBuffer;
-
-
-        //------------------------------------------------------------------------------
-        // decompress LZW data and write colours to OutputBuffer
-        // Optimsed for performance
-        // LzwCodeSize setup before call
-
-        private Color32[] DecompressLZW()
+        private Color32[] DecompressLZW( int minimumCodeSize )
         {
-            OutputBuffer = CreateBuffer();
+            var output = CreateBuffer();
 
             // setup codes
 
-            LzwCodeSize        = LzwMinimumCodeSize + 1;
-            LzwNextSize        = Pow2[ LzwCodeSize ];
-            LzwMaximumCodeSize = Pow2[ LzwMinimumCodeSize ];
-            LzwClearCode       = LzwMaximumCodeSize;
-            LzwEndCode         = LzwClearCode + 1;
+            var codeSize        = minimumCodeSize + 1;
+            var nextSize        = Pow2[ codeSize ];
+            var maximumCodeSize = Pow2[ minimumCodeSize ];
+            var clearCode       = maximumCodeSize;
+            var endCode         = maximumCodeSize + 1;
 
             // initialise buffers
 
-            LzwCodeBufferLen   = 0;
-            LzwNumCodes        = LzwMaximumCodeSize + 2;
+            var codesLen = 0;
+            var numCodes = maximumCodeSize + 2;
 
-            // write initial code sequences
-
-            for( ushort i = 0; i < LzwNumCodes; i++ )
+            for( ushort i = 0; i < numCodes; i++ )
             {
-                LzwCodeIndices[ i ] = LzwCodeBufferLen;
-                LzwCodeBuffer[ LzwCodeBufferLen++ ] = 1; // length
-                LzwCodeBuffer[ LzwCodeBufferLen++ ] = i; // code
+                codeOffsets[ i ] = codesLen;
+                codes[ codesLen++ ] = 1; // length
+                codes[ codesLen++ ] = i; // code
             }
 
             // output write position
@@ -538,7 +520,7 @@ namespace MG.GIF
             // LZW decode loop
 
             uint previousCode      = NoCode; // last code processed
-            uint mask              = (uint) ( LzwNextSize - 1 ); // mask out code bits
+            uint mask              = (uint) ( nextSize - 1 ); // mask out code bits
             uint shiftRegister     = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
             int  bitsAvailable     = 0; // number of bits available to read in the shift register
@@ -549,7 +531,7 @@ namespace MG.GIF
                 // load shift register
 
                 /**/
-                while( bitsAvailable < LzwCodeSize )
+                while( bitsAvailable < codeSize )
                 {
                     // if start of new block
 
@@ -561,7 +543,7 @@ namespace MG.GIF
                         // end of stream
                         if( bytesAvailable == 0 )
                         {
-                            return OutputBuffer;
+                            return output;
                         }
                     }
 
@@ -580,8 +562,8 @@ namespace MG.GIF
                 }
 
                 uint curCode = shiftRegister & mask;
-                bitsAvailable -= LzwCodeSize;
-                shiftRegister >>= LzwCodeSize;
+                bitsAvailable -= codeSize;
+                shiftRegister >>= codeSize;
 
                 // get next code
                 /*/
@@ -628,36 +610,36 @@ namespace MG.GIF
                 bool plusOne   = false;
                 int  bufferPos = 0;
 
-                if( curCode == LzwClearCode )
+                if( curCode == clearCode )
                 {
                     // reset codes
-                    LzwCodeSize = LzwMinimumCodeSize + 1;
-                    LzwNextSize = Pow2[ LzwCodeSize ];
-                    LzwNumCodes = LzwMaximumCodeSize + 2;
+                    codeSize = minimumCodeSize + 1;
+                    nextSize = Pow2[ codeSize ];
+                    numCodes = maximumCodeSize + 2;
 
                     // reset buffer write pos
-                    LzwCodeBufferLen = LzwNumCodes * 2;
+                    codesLen = numCodes * 2;
 
                     // clear previous code
                     previousCode = NoCode;
-                    mask         = (uint) ( LzwNextSize - 1 );
+                    mask         = (uint) ( nextSize - 1 );
 
                     continue;
                 }
-                else if( curCode == LzwEndCode )
+                else if( curCode == endCode )
                 {
                     // stop
                     break;
                 }
-                else if( curCode < LzwNumCodes )
+                else if( curCode < numCodes )
                 {
                     // write existing code
-                    bufferPos = LzwCodeIndices[ curCode ];
+                    bufferPos = codeOffsets[ curCode ];
                 }
                 else if( previousCode != NoCode )
                 {
                     // write previous code
-                    bufferPos = LzwCodeIndices[ previousCode ];
+                    bufferPos = codeOffsets[ previousCode ];
                     plusOne = true;
                 }
                 else
@@ -668,16 +650,16 @@ namespace MG.GIF
 
                 // output colours
 
-                var codeLength = LzwCodeBuffer[ bufferPos++ ];
-                var newCode    = LzwCodeBuffer[ bufferPos ];
+                var codeLength = codes[ bufferPos++ ];
+                var newCode    = codes[ bufferPos ];
 
                 for( int i = 0; i < codeLength; i++ )
                 {
-                    var code = LzwCodeBuffer[ bufferPos++ ];
+                    var code = codes[ bufferPos++ ];
 
                     if( code != TransparentIndex && curCol < GlobalWidth )
                     {
-                        OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ code ];
+                        output[ rowBase + curCol ] = ActiveColourTable[ code ];
                     }
 
                     if( ++curCol == rightEdge )
@@ -696,7 +678,7 @@ namespace MG.GIF
                 {
                     if( newCode != TransparentIndex && curCol < GlobalWidth )
                     {
-                        OutputBuffer[ rowBase + curCol ] = ActiveColourTable[ newCode ];
+                        output[ rowBase + curCol ] = ActiveColourTable[ newCode ];
                     }
 
                     if( ++curCol == rightEdge )
@@ -714,43 +696,43 @@ namespace MG.GIF
 
                 // create new code
 
-                if( previousCode != NoCode && LzwNumCodes != LzwCodeIndices.Length )
+                if( previousCode != NoCode && numCodes != codeOffsets.Length )
                 {
                     // get previous code from buffer
 
-                    bufferPos  = LzwCodeIndices[ previousCode ];
-                    codeLength = LzwCodeBuffer[ bufferPos++ ];
+                    bufferPos  = codeOffsets[ previousCode ];
+                    codeLength = codes[ bufferPos++ ];
 
                     // resize buffer if required (should be rare)
 
-                    if( LzwCodeBufferLen + codeLength + 1 >= LzwCodeBuffer.Length )
+                    if( codesLen + codeLength + 1 >= codes.Length )
                     {
-                        Array.Resize( ref LzwCodeBuffer, LzwCodeBuffer.Length * 2 );
+                        Array.Resize( ref codes, codes.Length * 2 );
                     }
 
                     // add new code
 
-                    LzwCodeIndices[ LzwNumCodes++ ]     = LzwCodeBufferLen;
-                    LzwCodeBuffer[ LzwCodeBufferLen++ ] = (ushort) ( codeLength + 1 );
+                    codeOffsets[ numCodes++ ]     = codesLen;
+                    codes[ codesLen++ ] = (ushort) ( codeLength + 1 );
 
                     // write previous code sequence
 
                     for( int i=0; i < codeLength; i++ )
                     {
-                        LzwCodeBuffer[ LzwCodeBufferLen++ ] = LzwCodeBuffer[ bufferPos++ ];
+                        codes[ codesLen++ ] = codes[ bufferPos++ ];
                     }
 
                     // append new code
 
-                    LzwCodeBuffer[ LzwCodeBufferLen++ ] = newCode;
+                    codes[ codesLen++ ] = newCode;
                 }
 
                 // increase code size?
 
-                if( LzwNumCodes >= LzwNextSize && LzwCodeSize < 12 )
+                if( numCodes >= nextSize && codeSize < 12 )
                 {
-                    LzwNextSize = Pow2[ ++LzwCodeSize ];
-                    mask = (uint) ( LzwNextSize - 1 );
+                    nextSize = Pow2[ ++codeSize ];
+                    mask = (uint) ( nextSize - 1 );
                 }
 
                 // remeber last code processed
@@ -773,7 +755,7 @@ namespace MG.GIF
                 bytesAvailable = Data[ D++ ];
             }
 
-            return OutputBuffer;
+            return output;
         }
     }
 }

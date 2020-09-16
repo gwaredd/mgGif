@@ -388,6 +388,45 @@ namespace MG.GIF
         }
 
         //------------------------------------------------------------------------------
+        // disposal method determines whether we start with a previous image
+
+        Color32[] CreateBuffer()
+        {
+            switch( ControlDispose )
+            {
+                case Disposal.None:
+                case Disposal.DoNotDispose:
+                {
+                    var prev = Images.Images.Count > 0 ? Images.Images[ Images.Images.Count - 1 ] : null;
+
+                    if( prev?.RawImage != null )
+                    {
+                        return prev.RawImage.Clone() as Color32[];
+                    }
+                }
+                break;
+
+                case Disposal.ReturnToPrevious:
+                {
+                    for( int i = Images.Images.Count - 1; i >= 0; i-- )
+                    {
+                        var prev = Images.Images[ i ];
+
+                        if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
+                        {
+                            return prev.RawImage.Clone() as Color32[];
+                        }
+                    }
+                }
+                break;
+
+                case Disposal.RestoreBackground:
+                default:
+                    break;
+            }
+
+            return new Color32[ GlobalWidth * GlobalHeight ];
+        }
 
         protected void ReadImageBlock()
         {
@@ -419,57 +458,6 @@ namespace MG.GIF
             if( LzwMinimumCodeSize > 11 )
             {
                 LzwMinimumCodeSize = 11;
-            }
-
-            // this disposal method determines whether we start with a previous image
-
-            OutputBuffer = null;
-
-            switch( ControlDispose )
-            {
-                case Disposal.None:
-                case Disposal.DoNotDispose:
-                    {
-                        var prev = Images.Images.Count > 0 ? Images.Images[ Images.Images.Count - 1 ] : null;
-
-                        if( prev?.RawImage != null )
-                        {
-                            OutputBuffer = prev.RawImage.Clone() as Color32[];
-                        }
-                    }
-                    break;
-
-
-                case Disposal.ReturnToPrevious:
-
-                    for( int i = Images.Images.Count - 1; i >= 0; i-- )
-                    {
-                        var prev = Images.Images[ i ];
-
-                        if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
-                        {
-                            OutputBuffer = prev.RawImage.Clone() as Color32[];
-                            break;
-                        }
-                    }
-
-                    break;
-
-                case Disposal.RestoreBackground:
-                default:
-                    break;
-            }
-
-            if( OutputBuffer == null )
-            {
-                var size = GlobalWidth * GlobalHeight;
-
-                OutputBuffer = new Color32[ size ];
-
-                for( int i = 0; i < size; i++ )
-                {
-                    OutputBuffer[i] = ClearColour;
-                }
             }
 
             // create image
@@ -514,10 +502,11 @@ namespace MG.GIF
         // decompress LZW data and write colours to OutputBuffer
         // Optimsed for performance
         // LzwCodeSize setup before call
-        // OutputBuffer should be initialised before hand with default values (so despose and transparency works correctly)
 
         private Color32[] DecompressLZW()
         {
+            OutputBuffer = CreateBuffer();
+
             // setup codes
 
             LzwCodeSize        = LzwMinimumCodeSize + 1;
@@ -579,7 +568,7 @@ namespace MG.GIF
                     if( bytesAvailable > 1 )
                     {
                         shiftRegister |= (uint) ( Data[ D++ ] | Data[ D++ ] << 8 ) << bitsAvailable;
-                        bytesAvailable-= 2;
+                        bytesAvailable -= 2;
                         bitsAvailable += 16;
                     }
                     else
@@ -597,23 +586,23 @@ namespace MG.GIF
                 // get next code
                 /*/
 
-                uint curCode = (uint)( shiftRegister & mask );
+                uint curCode = shiftRegister & mask;
                 bitsAvailable -= LzwCodeSize;
                 shiftRegister >>= LzwCodeSize;
 
                 if( bitsAvailable <= 0 )
                 {
-                    //if( bytesAvailable == 0 )
-                    //{
-                    //    // read blocksize
-                    //    bytesAvailable = Data[ D++ ];
+                    if( bytesAvailable == 0 )
+                    {
+                        // read blocksize
+                        bytesAvailable = Data[ D++ ];
 
-                    //    // end of stream
-                    //    if( bytesAvailable == 0 )
-                    //    {
-                    //        return OutputBuffer;
-                    //    }
-                    //}
+                        // end of stream
+                        if( bytesAvailable == 0 )
+                        {
+                            return OutputBuffer;
+                        }
+                    }
 
                     shiftRegister = lzwData[ lzwDataPos++ ];
                     var numBits = 8 * ( lzwDataPos < lzwData.Length || totalBytes % sizeof(BufferType) == 0 ? sizeof(BufferType) : ( totalBytes % sizeof(BufferType) ) );

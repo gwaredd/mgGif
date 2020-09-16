@@ -140,8 +140,6 @@ namespace MG.GIF
         private Color32[]   GlobalColourTable = new Color32[ 4096 ];
         private Color32[]   LocalColourTable  = new Color32[ 4096 ];
         private Color32[]   ActiveColourTable = null;
-        private Color32     BackgroundColour  = new Color32( 0x00,0x00,0x00,0xFF );
-        private Color32     ClearColour       = new Color32( 0x00,0x00,0x00,0x00 );
         private ushort      TransparentIndex  = NoTransparency;
 
         // current controls
@@ -157,9 +155,9 @@ namespace MG.GIF
         private ushort      ImageTop;
         private ushort      ImageWidth;
         private ushort      ImageHeight;
-        private byte        LzwMinimumCodeSize;
 
         //------------------------------------------------------------------------------
+        // data
 
         byte[]  Data;
         int     D;
@@ -168,6 +166,12 @@ namespace MG.GIF
         {
             Data = data;
             D    = 0;
+        }
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        byte ReadByte()
+        {
+            return Data[ D++ ];
         }
 
         [MethodImpl( MethodImplOptions.AggressiveInlining )]
@@ -202,7 +206,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private void ReadColourTable( Color32[] colourTable, ImageFlag flags )
+        private Color32[] ReadColourTable( Color32[] colourTable, ImageFlag flags )
         {
             var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
 
@@ -215,6 +219,8 @@ namespace MG.GIF
                     0xFF
                 );
             }
+
+            return colourTable;
         }
 
         //------------------------------------------------------------------------------
@@ -247,19 +253,14 @@ namespace MG.GIF
             Images.Width  = GlobalWidth;
             Images.Height = GlobalHeight;
 
-            var flags     = (ImageFlag) Data[ D++ ];
-            var bgIndex   = Data[ D++ ];
+            var flags = (ImageFlag) ReadByte();
 
+            D++; // background index
             D++; // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
                 ReadColourTable( GlobalColourTable, flags );
-
-                if( bgIndex < GlobalColourTable.Length )
-                {
-                    BackgroundColour = GlobalColourTable[ bgIndex ];
-                }
             }
         }
 
@@ -269,7 +270,7 @@ namespace MG.GIF
         {
             while( true )
             {
-                var block = (Block) Data[ D++ ];
+                var block = (Block) ReadByte();
 
                 switch( block )
                 {
@@ -279,7 +280,7 @@ namespace MG.GIF
 
                     case Block.Extension:
 
-                        var ext = (Extension) Data[ D++ ];
+                        var ext = (Extension) ReadByte();
 
                         switch( ext )
                         {
@@ -346,6 +347,53 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
+        protected void ReadImageBlock()
+        {
+            // read image block header
+
+            ImageLeft   = ReadUInt16();
+            ImageTop    = ReadUInt16();
+            ImageWidth  = ReadUInt16();
+            ImageHeight = ReadUInt16();
+
+            var flags   = (ImageFlag) Data[ D++ ];
+
+            if( ImageWidth == 0 || ImageHeight == 0 )
+            {
+                return;
+            }
+
+            if( flags.HasFlag( ImageFlag.ColourTable ) )
+            {
+                ActiveColourTable = ReadColourTable( LocalColourTable, flags );
+            }
+            else
+            {
+                ActiveColourTable = GlobalColourTable;
+            }
+
+            // create image
+
+            var img = new Image()
+            {
+                Width          = GlobalWidth,
+                Height         = GlobalHeight,
+                Delay          = ControlDelay * 10, // (gif are in 1/100th second) convert to ms
+                DisposalMethod = ControlDispose
+            };
+
+            img.RawImage = DecompressLZW( Data[ D++ ] ); // minimum code size
+
+            if( flags.HasFlag( ImageFlag.Interlaced ) )
+            {
+                img.RawImage = Deinterlace( img.RawImage, ImageWidth );
+            }
+
+            Images.Add( img );
+        }
+
+        //------------------------------------------------------------------------------
+
         protected Color32[] Deinterlace( Color32[] input, int width )
         {
             var output   = new Color32[ input.Length ];
@@ -387,54 +435,6 @@ namespace MG.GIF
 
             return output;
         }
-
-        //------------------------------------------------------------------------------
-
-        protected void ReadImageBlock()
-        {
-            // read image block header
-
-            ImageLeft   = ReadUInt16();
-            ImageTop    = ReadUInt16();
-            ImageWidth  = ReadUInt16();
-            ImageHeight = ReadUInt16();
-            var flags   = (ImageFlag) Data[ D++ ];
-
-            if( ImageWidth == 0 || ImageHeight == 0 )
-            {
-                return;
-            }
-
-            if( flags.HasFlag( ImageFlag.ColourTable ) )
-            {
-                ReadColourTable( LocalColourTable, flags );
-                ActiveColourTable = LocalColourTable;
-            }
-            else
-            {
-                ActiveColourTable = GlobalColourTable;
-            }
-
-            var minimumCodeSize = Data[ D++ ];
-
-            // create image
-
-            var img = new Image();
-
-            img.Width          = GlobalWidth;
-            img.Height         = GlobalHeight;
-            img.Delay          = ControlDelay * 10; // (gif are in 1/100th second) convert to ms
-            img.DisposalMethod = ControlDispose;
-            img.RawImage       = DecompressLZW( minimumCodeSize <= 11 ? minimumCodeSize : 11 );
-
-            if( flags.HasFlag( ImageFlag.Interlaced ) )
-            {
-                img.RawImage = Deinterlace( img.RawImage, ImageWidth );
-            }
-
-            Images.Add( img );
-        }
-
 
         //------------------------------------------------------------------------------
         // disposal method determines whether we start with a previous image
@@ -482,16 +482,26 @@ namespace MG.GIF
         //  LzwCodeSize setup before call
         //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
 
-        int[]    Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        int[]    Pow2        = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         int[]    codeOffsets = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[] codes       = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
         private Color32[] DecompressLZW( int minimumCodeSize )
         {
-            var output = CreateBuffer();
+            // output write position
+
+            var output    = CreateBuffer();
+            int row       = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
+            int col       = ImageLeft;
+            int rightEdge = ImageLeft + ImageWidth;
 
             // setup codes
+
+            if( minimumCodeSize > 11 )
+            {
+                minimumCodeSize = 11;
+            }
 
             var codeSize        = minimumCodeSize + 1;
             var nextSize        = Pow2[ codeSize ];
@@ -511,20 +521,14 @@ namespace MG.GIF
                 codes[ codesLen++ ] = i; // code
             }
 
-            // output write position
-
-            int rowBase   = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
-            int curCol    = ImageLeft;
-            int rightEdge = ImageLeft + ImageWidth;
-
             // LZW decode loop
 
-            uint previousCode      = NoCode; // last code processed
-            uint mask              = (uint) ( nextSize - 1 ); // mask out code bits
-            uint shiftRegister     = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+            uint previousCode   = NoCode; // last code processed
+            uint mask           = (uint) ( nextSize - 1 ); // mask out code bits
+            uint shiftRegister  = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-            int  bitsAvailable     = 0; // number of bits available to read in the shift register
-            int  bytesAvailable    = 0; // number of bytes left in current block
+            int  bitsAvailable  = 0; // number of bits available to read in the shift register
+            int  bytesAvailable = 0; // number of bytes left in current block
 
             while( true )
             {
@@ -640,7 +644,7 @@ namespace MG.GIF
                 {
                     // write previous code
                     bufferPos = codeOffsets[ previousCode ];
-                    plusOne = true;
+                    plusOne   = true;
                 }
                 else
                 {
@@ -657,17 +661,17 @@ namespace MG.GIF
                 {
                     var code = codes[ bufferPos++ ];
 
-                    if( code != TransparentIndex && curCol < GlobalWidth )
+                    if( code != TransparentIndex && col < GlobalWidth )
                     {
-                        output[ rowBase + curCol ] = ActiveColourTable[ code ];
+                        output[ row + col ] = ActiveColourTable[ code ];
                     }
 
-                    if( ++curCol == rightEdge )
+                    if( ++col == rightEdge )
                     {
-                        curCol = ImageLeft;
-                        rowBase -= GlobalWidth;
+                        col = ImageLeft;
+                        row -= GlobalWidth;
 
-                        if( rowBase < 0 )
+                        if( row < 0 )
                         {
                             goto Exit;
                         }
@@ -676,17 +680,17 @@ namespace MG.GIF
 
                 if( plusOne )
                 {
-                    if( newCode != TransparentIndex && curCol < GlobalWidth )
+                    if( newCode != TransparentIndex && col < GlobalWidth )
                     {
-                        output[ rowBase + curCol ] = ActiveColourTable[ newCode ];
+                        output[ row + col ] = ActiveColourTable[ newCode ];
                     }
 
-                    if( ++curCol == rightEdge )
+                    if( ++col == rightEdge )
                     {
-                        curCol = ImageLeft;
-                        rowBase -= GlobalWidth;
+                        col = ImageLeft;
+                        row -= GlobalWidth;
 
-                        if( rowBase < 0 )
+                        if( row < 0 )
                         {
                             goto Exit;
                         }
@@ -732,7 +736,7 @@ namespace MG.GIF
                 if( numCodes >= nextSize && codeSize < 12 )
                 {
                     nextSize = Pow2[ ++codeSize ];
-                    mask = (uint) ( nextSize - 1 );
+                    mask     = (uint) ( nextSize - 1 );
                 }
 
                 // remeber last code processed

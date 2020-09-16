@@ -482,10 +482,10 @@ namespace MG.GIF
         //  LzwCodeSize setup before call
         //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
 
-        int[]    Pow2        = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        int[]    Pow2      = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
-        int[]    codeOffsets = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-        ushort[] codes       = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+        int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
+        ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
         private Color32[] DecompressLZW( int minimumCodeSize )
         {
@@ -511,14 +511,14 @@ namespace MG.GIF
 
             // initialise buffers
 
-            var codesLen = 0;
+            var codesEnd = 0;
             var numCodes = maximumCodeSize + 2;
 
             for( ushort i = 0; i < numCodes; i++ )
             {
-                codeOffsets[ i ] = codesLen;
-                codes[ codesLen++ ] = 1; // length
-                codes[ codesLen++ ] = i; // code
+                codeIndex[ i ] = codesEnd;
+                codes[ codesEnd++ ] = 1; // length
+                codes[ codesEnd++ ] = i; // code
             }
 
             // LZW decode loop
@@ -611,8 +611,8 @@ namespace MG.GIF
 
                 // process code
 
-                bool plusOne   = false;
-                int  bufferPos = 0;
+                bool plusOne = false;
+                int  codePos = 0;
 
                 if( curCode == clearCode )
                 {
@@ -622,7 +622,7 @@ namespace MG.GIF
                     numCodes = maximumCodeSize + 2;
 
                     // reset buffer write pos
-                    codesLen = numCodes * 2;
+                    codesEnd = numCodes * 2;
 
                     // clear previous code
                     previousCode = NoCode;
@@ -638,13 +638,13 @@ namespace MG.GIF
                 else if( curCode < numCodes )
                 {
                     // write existing code
-                    bufferPos = codeOffsets[ curCode ];
+                    codePos = codeIndex[ curCode ];
                 }
                 else if( previousCode != NoCode )
                 {
                     // write previous code
-                    bufferPos = codeOffsets[ previousCode ];
-                    plusOne   = true;
+                    codePos = codeIndex[ previousCode ];
+                    plusOne = true;
                 }
                 else
                 {
@@ -654,12 +654,12 @@ namespace MG.GIF
 
                 // output colours
 
-                var codeLength = codes[ bufferPos++ ];
-                var newCode    = codes[ bufferPos ];
+                var codeLength = codes[ codePos++ ];
+                var newCode    = codes[ codePos ];
 
                 for( int i = 0; i < codeLength; i++ )
                 {
-                    var code = codes[ bufferPos++ ];
+                    var code = codes[ codePos++ ];
 
                     if( code != TransparentIndex && col < GlobalWidth )
                     {
@@ -700,35 +700,35 @@ namespace MG.GIF
 
                 // create new code
 
-                if( previousCode != NoCode && numCodes != codeOffsets.Length )
+                if( previousCode != NoCode && numCodes != codeIndex.Length )
                 {
                     // get previous code from buffer
 
-                    bufferPos  = codeOffsets[ previousCode ];
-                    codeLength = codes[ bufferPos++ ];
+                    codePos    = codeIndex[ previousCode ];
+                    codeLength = codes[ codePos++ ];
 
                     // resize buffer if required (should be rare)
 
-                    if( codesLen + codeLength + 1 >= codes.Length )
+                    if( codesEnd + codeLength + 1 >= codes.Length )
                     {
                         Array.Resize( ref codes, codes.Length * 2 );
                     }
 
                     // add new code
 
-                    codeOffsets[ numCodes++ ]     = codesLen;
-                    codes[ codesLen++ ] = (ushort) ( codeLength + 1 );
+                    codeIndex[ numCodes++ ] = codesEnd;
+                    codes[ codesEnd++ ]       = (ushort) ( codeLength + 1 );
 
-                    // write previous code sequence
+                    // copy previous code sequence
 
                     for( int i=0; i < codeLength; i++ )
                     {
-                        codes[ codesLen++ ] = codes[ bufferPos++ ];
+                        codes[ codesEnd++ ] = codes[ codePos++ ];
                     }
 
                     // append new code
 
-                    codes[ codesLen++ ] = newCode;
+                    codes[ codesEnd++ ] = newCode;
                 }
 
                 // increase code size?
@@ -739,25 +739,17 @@ namespace MG.GIF
                     mask     = (uint) ( nextSize - 1 );
                 }
 
-                // remeber last code processed
+                // remember last code processed
                 previousCode = curCode;
             }
 
         Exit:
 
             // skip any remaining bytes
-
             D += bytesAvailable;
 
             // consume any remaining blocks
-
-            bytesAvailable = Data[ D++ ];
-
-            while( bytesAvailable > 0 )
-            {
-                D += bytesAvailable;
-                bytesAvailable = Data[ D++ ];
-            }
+            SkipBlock();
 
             return output;
         }

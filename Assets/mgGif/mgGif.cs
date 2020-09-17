@@ -532,9 +532,7 @@ namespace MG.GIF
 
             while( true )
             {
-                // load shift register
-
-                /**/
+                /**
                 while( bitsAvailable < codeSize )
                 {
                     // if start of new block
@@ -568,44 +566,76 @@ namespace MG.GIF
                 uint curCode = shiftRegister & mask;
                 bitsAvailable -= codeSize;
                 shiftRegister >>= codeSize;
-
-                // get next code
                 /*/
 
-                uint curCode = shiftRegister & mask;
-                bitsAvailable -= LzwCodeSize;
-                shiftRegister >>= LzwCodeSize;
 
-                if( bitsAvailable <= 0 )
+                // get next code
+
+                uint curCode = shiftRegister & mask;
+
+                if( bitsAvailable >= codeSize )
                 {
+                    bitsAvailable -= codeSize;
+                    shiftRegister >>= codeSize;
+                }
+                else
+                {
+                    // reload shift register
+
+                    // if start of new block
                     if( bytesAvailable == 0 )
                     {
                         // read blocksize
                         bytesAvailable = Data[ D++ ];
 
-                        // end of stream
+                        // exit if end of stream
                         if( bytesAvailable == 0 )
                         {
-                            return OutputBuffer;
+                            return output;
                         }
                     }
 
-                    shiftRegister = lzwData[ lzwDataPos++ ];
-                    var numBits = 8 * ( lzwDataPos < lzwData.Length || totalBytes % sizeof(BufferType) == 0 ? sizeof(BufferType) : ( totalBytes % sizeof(BufferType) ) );
+                    int newBits = 32;
 
-                    if( bitsAvailable < 0 )
+                    if( bytesAvailable >=4 )
                     {
-                        var bitsRead = LzwCodeSize + bitsAvailable;
-                        curCode |= ( (uint) shiftRegister << bitsRead ) & mask;
-
-                        shiftRegister >>= -bitsAvailable;
-                        bitsAvailable = numBits + bitsAvailable;
+                        shiftRegister   = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 | Data[ D++ ] << 24 );
+                        bytesAvailable -= 4;
+                    }
+                    else if( bytesAvailable == 3 )
+                    {
+                        shiftRegister  = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 );
+                        bytesAvailable = 0;
+                        newBits        = 24;
+                    }
+                    else if( bytesAvailable == 2 )
+                    {
+                        shiftRegister  = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 );
+                        bytesAvailable = 0;
+                        newBits        = 16;
                     }
                     else
                     {
-                        bitsAvailable = numBits;
+                        shiftRegister  = Data[ D++ ];
+                        bytesAvailable = 0;
+                        newBits        = 8;
+                    }
+
+                    if( bitsAvailable > 0 )
+                    {
+                        var bitsRemaining = codeSize - bitsAvailable;
+                        curCode |= ( shiftRegister << bitsAvailable ) & mask;
+                        shiftRegister >>= bitsRemaining;
+                        bitsAvailable = newBits - bitsRemaining;
+                    }
+                    else
+                    {
+                        curCode = shiftRegister & mask;
+                        shiftRegister >>= codeSize;
+                        bitsAvailable = newBits - codeSize;
                     }
                 }
+
                 /**/
 
 

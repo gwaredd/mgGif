@@ -1,3 +1,5 @@
+//#define mgGIF_UNSAFE
+
 using UnityEngine;
 using System;
 using System.Collections.Generic;
@@ -382,7 +384,7 @@ namespace MG.GIF
                 DisposalMethod = ControlDispose
             };
 
-            img.RawImage = DecompressLZW( Data[ D++ ] ); // minimum code size
+            img.RawImage = DecompressLZW(); // minimum code size
 
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
@@ -487,8 +489,16 @@ namespace MG.GIF
         int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
-        private Color32[] DecompressLZW( int minimumCodeSize )
+        
+        private Color32[] DecompressLZW()
         {
+#if mgGIF_UNSAFE
+            unsafe
+            {
+                fixed ( byte* pData = Data )
+                {
+#endif
+
             // output write position
 
             var output    = CreateBuffer();
@@ -497,6 +507,8 @@ namespace MG.GIF
             int rightEdge = ImageLeft + ImageWidth;
 
             // setup codes
+
+            int minimumCodeSize = Data[ D++ ];
 
             if( minimumCodeSize > 11 )
             {
@@ -532,43 +544,6 @@ namespace MG.GIF
 
             while( true )
             {
-                /**
-                while( bitsAvailable < codeSize )
-                {
-                    // if start of new block
-
-                    if( bytesAvailable == 0 )
-                    {
-                        // read blocksize
-                        bytesAvailable = Data[ D++ ];
-
-                        // end of stream
-                        if( bytesAvailable == 0 )
-                        {
-                            return output;
-                        }
-                    }
-
-                    if( bytesAvailable > 1 )
-                    {
-                        shiftRegister |= (uint) ( Data[ D++ ] | Data[ D++ ] << 8 ) << bitsAvailable;
-                        bytesAvailable -= 2;
-                        bitsAvailable += 16;
-                    }
-                    else
-                    {
-                        shiftRegister |= (uint) Data[ D++ ] << bitsAvailable;
-                        bytesAvailable--;
-                        bitsAvailable += 8;
-                    }
-                }
-
-                uint curCode = shiftRegister & mask;
-                bitsAvailable -= codeSize;
-                shiftRegister >>= codeSize;
-                /*/
-
-
                 // get next code
 
                 uint curCode = shiftRegister & mask;
@@ -595,16 +570,27 @@ namespace MG.GIF
                         }
                     }
 
+
                     int newBits = 32;
 
                     if( bytesAvailable >=4 )
                     {
-                        shiftRegister   = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 | Data[ D++ ] << 24 );
+#if mgGIF_UNSAFE
+                        shiftRegister = *( (uint*) &pData[D] );
+                        D += 4;
+#else
+                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 | Data[ D++ ] << 24 );
+#endif
                         bytesAvailable -= 4;
                     }
                     else if( bytesAvailable == 3 )
                     {
-                        shiftRegister  = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 );
+#if mgGIF_UNSAFE
+                        shiftRegister = *( (uint*) &pData[D] );
+                        D += 3;
+#else
+                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 );
+#endif
                         bytesAvailable = 0;
                         newBits        = 24;
                     }
@@ -635,9 +621,6 @@ namespace MG.GIF
                         bitsAvailable = newBits - codeSize;
                     }
                 }
-
-                /**/
-
 
                 // process code
 
@@ -783,5 +766,8 @@ namespace MG.GIF
 
             return output;
         }
+#if mgGIF_UNSAFE
+    }}
+#endif
     }
 }

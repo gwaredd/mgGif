@@ -30,7 +30,6 @@ namespace MG.GIF
         }
     }
 
-
     ////////////////////////////////////////////////////////////////////////////////
 
     public class ImageList
@@ -162,6 +161,11 @@ namespace MG.GIF
         byte[]  Data;
         int     D;
 
+        public static ImageList Parse( byte[] data )
+        {
+            return new Decoder( data ).Decode();
+        }
+
         public Decoder( byte[] data )
         {
             Data = data;
@@ -180,12 +184,6 @@ namespace MG.GIF
             return (ushort) ( Data[ D++ ] | Data[ D++ ] << 8 );
         }
 
-        //------------------------------------------------------------------------------
-
-        public static ImageList Parse( byte[] data )
-        {
-            return new Decoder( data ).Decode();
-        }
 
         //------------------------------------------------------------------------------
 
@@ -316,7 +314,6 @@ namespace MG.GIF
                 blockSize = Data[ D++ ];
             }
         }
-
 
         //------------------------------------------------------------------------------
 
@@ -462,7 +459,13 @@ namespace MG.GIF
 
             // output write position
 
-            var output    = ControlDispose == Disposal.RestoreBackground || LastImage == null ? new Color32[ GlobalWidth * GlobalHeight ] : LastImage.Clone() as Color32[];
+            var output = new Color32[ GlobalWidth * GlobalHeight ];
+
+            if( ControlDispose != Disposal.RestoreBackground && LastImage != null )
+            {
+                Array.Copy( LastImage, output, LastImage.Length );
+            }
+
             int row       = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
             int col       = ImageLeft;
             int rightEdge = ImageLeft + ImageWidth;

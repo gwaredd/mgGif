@@ -8,16 +8,6 @@ using System.Runtime.CompilerServices;
 namespace MG.GIF
 {
     ////////////////////////////////////////////////////////////////////////////////
-
-    public enum Disposal
-    {
-        None              = 0x00,
-        DoNotDispose      = 0x04,
-        RestoreBackground = 0x08,
-        ReturnToPrevious  = 0x0C
-    }
-
-    ////////////////////////////////////////////////////////////////////////////////
     
     public class Image
     {
@@ -130,6 +120,14 @@ namespace MG.GIF
             Comments        = 0xFE,
             PlainText       = 0x01,
             ApplicationData = 0xFF
+        }
+
+        private enum Disposal
+        {
+            None              = 0x00,
+            DoNotDispose      = 0x04,
+            RestoreBackground = 0x08,
+            ReturnToPrevious  = 0x0C
         }
 
         const uint          NoCode              = 0xFFFF;

@@ -12,12 +12,14 @@ public class Profile : MonoBehaviour
     private int     mCount;
     private float   mTimer;
     private long    mTotal;
+    private string[] mFiles;
 
     void Start()
     {
         mCount = 0;
         mTimer = SampleWaitTime;
         mTotal = 0;
+        mFiles = Directory.GetFiles( Application.streamingAssetsPath, "*.gif", SearchOption.TopDirectoryOnly );
     }
 
     void Update()
@@ -52,18 +54,15 @@ public class Profile : MonoBehaviour
 
     void Run( int sample )
     {
-        var files = new string[]{ "butterfly.gif", "cat.gif", "jellyfish.gif" };
-
         Profiler.BeginSample( $"Sample {sample}" );
 
         var sw = new Stopwatch();
         sw.Start();
 
-        foreach( var file in files )
+        foreach( var file in mFiles )
         {
-            var path  = Path.Combine( Application.streamingAssetsPath, file );
-
-            new MG.GIF.Decoder( File.ReadAllBytes( path ) ).DecodeArray();
+            var bytes = File.ReadAllBytes( file );
+            new MG.GIF.Decoder( bytes ).DecodeArray();
         }
 
         sw.Stop();

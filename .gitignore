@@ -1,6 +1,7 @@
 _tmp
 tools
 *.csproj
+*.csproj.user
 obj
 Logs
 Library

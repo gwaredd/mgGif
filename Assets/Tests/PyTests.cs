@@ -283,7 +283,7 @@ namespace MG.GIF
 
     public class PyTests
     {
-        private string DirData = @"Assets\Tests\~Data";
+        private string DirData = @"Assets\Tests\Data~";
 
         [Test]
         public void CanReadTestData()

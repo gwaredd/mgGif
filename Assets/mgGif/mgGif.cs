@@ -23,9 +23,8 @@ namespace MG.GIF
     {
         public int       Width;
         public int       Height;
+        public int       Delay; // milliseconds
         public Color32[] RawImage;
-        public int       Delay; // ms
-        public Disposal  DisposalMethod = Disposal.None;
 
         public Texture2D CreateTexture()
         {
@@ -112,17 +111,17 @@ namespace MG.GIF
         [Flags]
         private enum ImageFlag
         {
-            Interlaced    = 0x40,
-            ColourTable   = 0x80,
-            TableSizeMask = 0x07,
-            BitDepthMask  = 0x70,
+            Interlaced      = 0x40,
+            ColourTable     = 0x80,
+            TableSizeMask   = 0x07,
+            BitDepthMask    = 0x70,
         }
 
         private enum Block
         {
-            Image     = 0x2C,
-            Extension = 0x21,
-            End       = 0x3B
+            Image           = 0x2C,
+            Extension       = 0x21,
+            End             = 0x3B
         }
 
         private enum Extension
@@ -133,20 +132,21 @@ namespace MG.GIF
             ApplicationData = 0xFF
         }
 
-        const uint          NoCode         = 0xFFFF;
-        const ushort        NoTransparency = 0xFFFF;
+        const uint          NoCode              = 0xFFFF;
+        const ushort        NoTransparency      = 0xFFFF;
 
         private ImageList   Images;
+        private Color32[]   LastImage           = null;
 
         // colour
-        private Color32[]   GlobalColourTable = new Color32[ 4096 ];
-        private Color32[]   LocalColourTable  = new Color32[ 4096 ];
-        private Color32[]   ActiveColourTable = null;
-        private ushort      TransparentIndex  = NoTransparency;
+        private Color32[]   GlobalColourTable   = new Color32[ 4096 ];
+        private Color32[]   LocalColourTable    = new Color32[ 4096 ];
+        private Color32[]   ActiveColourTable   = null;
+        private ushort      TransparentIndex    = NoTransparency;
 
         // current controls
-        private ushort      ControlDelay      = 0;
-        private Disposal    ControlDispose    = Disposal.None;
+        private ushort      ControlDelay        = 0;
+        private Disposal    ControlDispose      = Disposal.None;
 
         // global image
         private ushort      GlobalWidth;
@@ -249,8 +249,8 @@ namespace MG.GIF
 
             // read header
 
-            GlobalWidth  = ReadUInt16();
-            GlobalHeight = ReadUInt16();
+            GlobalWidth   = ReadUInt16();
+            GlobalHeight  = ReadUInt16();
 
             Images.Width  = GlobalWidth;
             Images.Height = GlobalHeight;
@@ -378,10 +378,9 @@ namespace MG.GIF
 
             var img = new Image()
             {
-                Width          = GlobalWidth,
-                Height         = GlobalHeight,
-                Delay          = ControlDelay * 10, // (gif are in 1/100th second) convert to ms
-                DisposalMethod = ControlDispose
+                Width  = GlobalWidth,
+                Height = GlobalHeight,
+                Delay  = ControlDelay * 10 // (gif are in 1/100th second) convert to ms
             };
 
             img.RawImage = DecompressLZW(); // minimum code size
@@ -389,6 +388,11 @@ namespace MG.GIF
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
                 img.RawImage = Deinterlace( img.RawImage, ImageWidth );
+            }
+
+            if( ControlDispose == Disposal.None || ControlDispose == Disposal.DoNotDispose )
+            {
+                LastImage = img.RawImage;
             }
 
             Images.Add( img );
@@ -439,47 +443,6 @@ namespace MG.GIF
         }
 
         //------------------------------------------------------------------------------
-        // disposal method determines whether we start with a previous image
-
-        Color32[] CreateBuffer()
-        {
-            switch( ControlDispose )
-            {
-                case Disposal.None:
-                case Disposal.DoNotDispose:
-                {
-                    var prev = Images.Images.Count > 0 ? Images.Images[ Images.Images.Count - 1 ] : null;
-
-                    if( prev?.RawImage != null )
-                    {
-                        return prev.RawImage.Clone() as Color32[];
-                    }
-                }
-                break;
-
-                case Disposal.ReturnToPrevious:
-                {
-                    for( int i = Images.Images.Count - 1; i >= 0; i-- )
-                    {
-                        var prev = Images.Images[ i ];
-
-                        if( prev.DisposalMethod == Disposal.None || prev.DisposalMethod == Disposal.DoNotDispose )
-                        {
-                            return prev.RawImage.Clone() as Color32[];
-                        }
-                    }
-                }
-                break;
-
-                case Disposal.RestoreBackground:
-                default:
-                    break;
-            }
-
-            return new Color32[ GlobalWidth * GlobalHeight ];
-        }
-
-        //------------------------------------------------------------------------------
         // DecompressLZW()
         //  LzwCodeSize setup before call
         //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
@@ -501,7 +464,7 @@ namespace MG.GIF
 
             // output write position
 
-            var output    = CreateBuffer();
+            var output    = ControlDispose == Disposal.RestoreBackground || LastImage == null ? new Color32[ GlobalWidth * GlobalHeight ] : LastImage.Clone() as Color32[];
             int row       = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
             int col       = ImageLeft;
             int rightEdge = ImageLeft + ImageWidth;

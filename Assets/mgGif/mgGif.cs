@@ -34,10 +34,6 @@ namespace MG.GIF
 
     public class ImageList
     {
-        public string Version;
-        public ushort Width;
-        public ushort Height;
-
         public List<Image> Images = new List<Image>();
 
         public void Add( Image img )
@@ -129,6 +125,8 @@ namespace MG.GIF
             ReturnToPrevious  = 0x0C
         }
 
+        public string       Version;
+
         const uint          NoCode              = 0xFFFF;
         const ushort        NoTransparency      = 0xFFFF;
 
@@ -146,14 +144,15 @@ namespace MG.GIF
         private Disposal    ControlDispose      = Disposal.None;
 
         // global image
-        private ushort      GlobalWidth;
-        private ushort      GlobalHeight;
+        public ushort       Width;
+        public ushort       Height;
 
         // current image
         private ushort      ImageLeft;
         private ushort      ImageTop;
         private ushort      ImageWidth;
         private ushort      ImageHeight;
+
 
         //------------------------------------------------------------------------------
         // data
@@ -189,15 +188,15 @@ namespace MG.GIF
 
         public ImageList Decode()
         {
-            if( Data == null || Data.Length <= 12 )
-            {
-                throw new Exception( "Invalid data" );
-            }
-
             Images = new ImageList();
 
-            ReadHeader();
-            ReadBlocks();
+            var img = NextImage();
+
+            while( img != null )
+            {
+                Images.Add( img );
+                img = NextImage();
+            }
 
             return Images;
         }
@@ -227,7 +226,7 @@ namespace MG.GIF
         {
             // signature
 
-            Images.Version = new string( new char[] {
+            Version = new string( new char[] {
                 (char) Data[ 0 ],
                 (char) Data[ 1 ],
                 (char) Data[ 2 ],
@@ -238,18 +237,15 @@ namespace MG.GIF
 
             D = 6;
 
-            if( Images.Version != "GIF87a" && Images.Version != "GIF89a" )
+            if( Version != "GIF87a" && Version != "GIF89a" )
             {
                 throw new Exception( "Unsupported GIF version" );
             }
 
             // read header
 
-            GlobalWidth   = ReadUInt16();
-            GlobalHeight  = ReadUInt16();
-
-            Images.Width  = GlobalWidth;
-            Images.Height = GlobalHeight;
+            Width   = ReadUInt16();
+            Height  = ReadUInt16();
 
             var flags = (ImageFlag) ReadByte();
 
@@ -264,8 +260,18 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadBlocks()
+        public Image NextImage()
         {
+            if( D == 0 )
+            {
+                if( Data == null || Data.Length <= 12 )
+                {
+                    throw new Exception( "Invalid data" );
+                }
+
+                ReadHeader();
+            }
+
             while( true )
             {
                 var block = (Block) ReadByte();
@@ -273,7 +279,13 @@ namespace MG.GIF
                 switch( block )
                 {
                     case Block.Image:
-                        ReadImageBlock();
+
+                        var img = ReadImageBlock();
+
+                        if( img != null )
+                        {
+                            return img;
+                        }
                         break;
 
                     case Block.Extension:
@@ -294,7 +306,7 @@ namespace MG.GIF
                         break;
 
                     case Block.End:
-                        return;
+                        return null;
 
                     default:
                         throw new Exception( "Unexpected block type" );
@@ -344,7 +356,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadImageBlock()
+        protected Image ReadImageBlock()
         {
             // read image block header
 
@@ -357,7 +369,7 @@ namespace MG.GIF
 
             if( ImageWidth == 0 || ImageHeight == 0 )
             {
-                return;
+                return null;
             }
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
@@ -373,8 +385,8 @@ namespace MG.GIF
 
             var img = new Image()
             {
-                Width  = GlobalWidth,
-                Height = GlobalHeight,
+                Width  = Width,
+                Height = Height,
                 Delay  = ControlDelay * 10 // (gif are in 1/100th second) convert to ms
             };
 
@@ -390,7 +402,7 @@ namespace MG.GIF
                 LastImage = img.RawImage;
             }
 
-            Images.Add( img );
+            return img;
         }
 
         //------------------------------------------------------------------------------
@@ -438,12 +450,18 @@ namespace MG.GIF
         }
 
         //------------------------------------------------------------------------------
+
+        protected Color32[] ReverseRows( Color32[] input, int width )
+        {
+            return null;
+        }
+
+        //------------------------------------------------------------------------------
         // DecompressLZW()
         //  LzwCodeSize setup before call
         //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
 
         int[]    Pow2      = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
-
         int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
@@ -459,14 +477,14 @@ namespace MG.GIF
 
             // output write position
 
-            var output = new Color32[ GlobalWidth * GlobalHeight ];
+            var output = new Color32[ Width * Height ];
 
             if( ControlDispose != Disposal.RestoreBackground && LastImage != null )
             {
                 Array.Copy( LastImage, output, LastImage.Length );
             }
 
-            int row       = ( GlobalHeight - ImageTop - 1 ) * GlobalWidth;
+            int row       = ( Height - ImageTop - 1 ) * Width;
             int col       = ImageLeft;
             int rightEdge = ImageLeft + ImageWidth;
 
@@ -638,7 +656,7 @@ namespace MG.GIF
                 {
                     var code = codes[ codePos++ ];
 
-                    if( code != TransparentIndex && col < GlobalWidth )
+                    if( code != TransparentIndex && col < Width )
                     {
                         output[ row + col ] = ActiveColourTable[ code ];
                     }
@@ -646,7 +664,7 @@ namespace MG.GIF
                     if( ++col == rightEdge )
                     {
                         col = ImageLeft;
-                        row -= GlobalWidth;
+                        row -= Width;
 
                         if( row < 0 )
                         {
@@ -657,7 +675,7 @@ namespace MG.GIF
 
                 if( plusOne )
                 {
-                    if( newCode != TransparentIndex && col < GlobalWidth )
+                    if( newCode != TransparentIndex && col < Width )
                     {
                         output[ row + col ] = ActiveColourTable[ newCode ];
                     }
@@ -665,7 +683,7 @@ namespace MG.GIF
                     if( ++col == rightEdge )
                     {
                         col = ImageLeft;
-                        row -= GlobalWidth;
+                        row -= Width;
 
                         if( row < 0 )
                         {

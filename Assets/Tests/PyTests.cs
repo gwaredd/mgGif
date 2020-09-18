@@ -117,14 +117,17 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            for( var y = 0; y < gif.Height; y++ )
+            var width  = gif.Images[ 0 ].Width;
+            var height = gif.Images[ 0 ].Height;
+
+            for( var y = 0; y < height; y++ )
             {
-                for( var x = 0; x < gif.Width; x++ )
+                for( var x = 0; x < width; x++ )
                 {
                     // note that colours are flipped in Y as gif texture coordinates are top-left (unity is bottom-left)
 
-                    var i = y * gif.Width + x;
-                    var j = ( gif.Height - y - 1 ) * gif.Width + x;
+                    var i = y * width + x;
+                    var j = ( height - y - 1 ) * width + x;
 
                     Assert.AreEqual( colours[i], frame.RawImage[j] );
                 }
@@ -187,8 +190,9 @@ namespace MG.GIF
         {
             // read input gif
 
-            var bytes = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var gif   = Decoder.Parse( bytes );
+            var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
+            var decoder = new Decoder( bytes );
+            var gif     = decoder.Decode();
 
             // compare results
 
@@ -218,15 +222,15 @@ namespace MG.GIF
                         break;
 
                     case "version":
-                        Assert.AreEqual( Get( "version" ), gif.Version );
+                        Assert.AreEqual( Get( "version" ), decoder.Version );
                         break;
 
                     case "width":
-                        Assert.AreEqual( Get( "width" ), gif.Width.ToString() );
+                        Assert.AreEqual( Get( "width" ), decoder.Width.ToString() );
                         break;
 
                     case "height":
-                        Assert.AreEqual( Get( "height" ), gif.Height.ToString() );
+                        Assert.AreEqual( Get( "height" ), decoder.Height.ToString() );
                         break;
 
                     case "loop-count":

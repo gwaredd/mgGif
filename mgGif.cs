@@ -36,11 +36,6 @@ namespace MG.GIF
     {
         public List<Image> Images = new List<Image>();
 
-        public void Add( Image img )
-        {
-            Images.Add( img );
-        }
-
         public Image GetImage( int index )
         {
             return index < Images.Count ? Images[index] : null;
@@ -130,7 +125,6 @@ namespace MG.GIF
         const uint          NoCode              = 0xFFFF;
         const ushort        NoTransparency      = 0xFFFF;
 
-        private ImageList   Images;
         private Color32[]   LastImage           = null;
 
         // colour
@@ -138,6 +132,7 @@ namespace MG.GIF
         private Color32[]   LocalColourTable    = new Color32[ 4096 ];
         private Color32[]   ActiveColourTable   = null;
         private ushort      TransparentIndex    = NoTransparency;
+        public  Color32     BackgroundColour    = new Color32();
 
         // current controls
         private ushort      ControlDelay        = 0;
@@ -188,17 +183,40 @@ namespace MG.GIF
 
         public ImageList Decode()
         {
-            Images = new ImageList();
+            var images = new ImageList();
 
             var img = NextImage();
 
             while( img != null )
             {
-                Images.Add( img );
+                images.Images.Add( img );
                 img = NextImage();
             }
 
-            return Images;
+            return images;
+        }
+
+        public Image[] DecodeArray()
+        {
+            var count  = 0;
+            var images = new Image[ 32 ];
+
+            var img = NextImage();
+
+            while( img != null )
+            {
+                if( count == images.Length )
+                {
+                    Array.Resize( ref images, count * 2 );
+                }
+
+                images[ count++ ] = img;
+                img = NextImage();
+            }
+
+            Array.Resize( ref images, count );
+
+            return images;
         }
 
         //------------------------------------------------------------------------------
@@ -248,14 +266,16 @@ namespace MG.GIF
             Height  = ReadUInt16();
 
             var flags = (ImageFlag) ReadByte();
+            var bgIndex = Data[ D++ ]; // background colour
 
-            D++; // background index
             D++; // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
                 ReadColourTable( GlobalColourTable, flags );
             }
+
+            BackgroundColour = GlobalColourTable[ bgIndex ];
         }
 
         //------------------------------------------------------------------------------
@@ -447,13 +467,6 @@ namespace MG.GIF
             }
 
             return output;
-        }
-
-        //------------------------------------------------------------------------------
-
-        protected Color32[] ReverseRows( Color32[] input, int width )
-        {
-            return null;
         }
 
         //------------------------------------------------------------------------------

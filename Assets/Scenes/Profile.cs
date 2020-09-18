@@ -62,7 +62,8 @@ public class Profile : MonoBehaviour
         foreach( var file in files )
         {
             var path  = Path.Combine( Application.streamingAssetsPath, file );
-            MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
+
+            new MG.GIF.Decoder( File.ReadAllBytes( path ) ).DecodeArray();
         }
 
         sw.Stop();

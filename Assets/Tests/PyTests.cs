@@ -255,7 +255,8 @@ namespace MG.GIF
 
                         if( ColorUtility.TryParseHtmlString( v, out col ) )
                         {
-                            //Assert.AreEqual( col, gif.BackgroundColour );
+                            Color32 c = col;
+                            Assert.AreEqual( c, decoder.BackgroundColour );
                         }
                         else
                         {

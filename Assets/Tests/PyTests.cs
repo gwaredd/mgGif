@@ -87,7 +87,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // compare output against reference image
 
-        private void ValidatePixels( ImageList gif, Image frame, string referenceFile )
+        private void ValidatePixels( Image[] gif, Image frame, string referenceFile )
         {
             if( frame == null && referenceFile == "transparent-dot.rgba" )
             {
@@ -117,8 +117,8 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            var width  = gif.Images[ 0 ].Width;
-            var height = gif.Images[ 0 ].Height;
+            var width  = gif[ 0 ].Width;
+            var height = gif[ 0 ].Height;
 
             for( var y = 0; y < height; y++ )
             {
@@ -137,7 +137,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // check frame against config values
 
-        private void ValidateFrame( int frameIndex, string frameName, ImageList data )
+        private void ValidateFrame( int frameIndex, string frameName, Image[] images )
         {
             var handle = $"[{frameName}].";
 
@@ -145,11 +145,11 @@ namespace MG.GIF
 
             if( Get("force-animation") == "no" )
             {
-                frame = data.GetFrame( frameIndex );
+                frame = images.GetFrame( frameIndex );
             }
             else
             {
-                frame = data.GetImage( frameIndex );
+                frame = images[ frameIndex ];
             }
 
 
@@ -164,12 +164,12 @@ namespace MG.GIF
 
                 if( kv[1] == "pixels" )
                 {
-                    ValidatePixels( data, frame, Get( key ) );
+                    ValidatePixels( images, frame, Get( key ) );
                 }
                 else if( kv[1] == "delay" )
                 {
-                    Assert.IsNotNull( data.Images );
-                    Assert.IsTrue( frameIndex < data.Images.Count );
+                    Assert.IsNotNull( images );
+                    Assert.IsTrue( frameIndex < images.Length );
 
                     var expected = Get(key);
 
@@ -191,8 +191,8 @@ namespace MG.GIF
             // read input gif
 
             var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var decoder = new Decoder( bytes );
-            var gif     = decoder.Decode();
+            var decoder = new Decoder().Decode( bytes );
+            var gif     = decoder.GetImages();
 
             // compare results
 

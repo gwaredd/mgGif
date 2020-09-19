@@ -18,24 +18,24 @@ public class AnimatedTextures : MonoBehaviour
             return;
         }
 
-        var path  = Path.Combine( Application.streamingAssetsPath, Filename );
-        var gif   = MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
+        var path    = Path.Combine( Application.streamingAssetsPath, Filename );
+        var images  = MG.GIF.Decoder.Parse( File.ReadAllBytes( path ) );
 
-        var numFrames = gif.NumFrames;
+        var numFrames = images.GetNumFrames();
 
         if( numFrames == 0 )
         {
             return;
         }
 
-        mFrames       = new Texture2D[ numFrames ];
-        mFrameDelay   = new float[ numFrames ];
+        mFrames = new Texture2D[ numFrames ];
+        mFrameDelay = new float[ numFrames ];
 
-        for( int i=0; i < numFrames; i++ )
+        for( int i = 0; i < numFrames; i++ )
         {
-            var frame       = gif.GetFrame( i );
-            mFrames[i]      = frame.CreateTexture();
-            mFrameDelay[i]  = frame.Delay / 1000.0f; // ms -> s
+            var frame        = images.GetFrame( i );
+            mFrames[ i ]     = frame.CreateTexture();
+            mFrameDelay[ i ] = frame.Delay / 1000.0f; // ms -> s
         }
 
         GetComponent<Renderer>().material.mainTexture = mFrames[0];

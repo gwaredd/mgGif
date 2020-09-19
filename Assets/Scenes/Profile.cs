@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -39,8 +38,7 @@ public class Profile : MonoBehaviour
 
         foreach( var file in mFiles )
         {
-            decoder.SetData( file );
-            decoder.GetImages();
+            decoder.Decode( file ).GetImages();
         }
 
         sw.Stop();

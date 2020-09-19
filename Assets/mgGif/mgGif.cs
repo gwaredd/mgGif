@@ -2,7 +2,6 @@
 
 using UnityEngine;
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace MG.GIF
@@ -75,9 +74,11 @@ namespace MG.GIF
         const uint          NoCode              = 0xFFFF;
         const ushort        NoTransparency      = 0xFFFF;
 
-        private Color32[]   LastImage;
+        // input stream to decode
+        byte[]              Data;
+        int                 D;
 
-        // colour
+        // colour table
         private Color32[]   GlobalColourTable;
         private Color32[]   LocalColourTable;
         private Color32[]   ActiveColourTable;
@@ -93,50 +94,39 @@ namespace MG.GIF
         private ushort      ImageWidth;
         private ushort      ImageHeight;
 
+        // previous image (to adhere to "dispoal" method)
+        private Color32[]   PrevImage;
+
 
         //------------------------------------------------------------------------------
 
+        // one shot
+
         public static Image[] Parse( byte[] data )
         {
-            return new Decoder().Decode( data ).GetImages();
+            return new Decoder().Load( data ).GetImages();
         }
 
-        public Decoder Decode( byte[] data )
+        // load data
+
+        public Decoder Load( byte[] data )
         {
-            Data = data;
-            D    = 0;
+            Data              = data;
+            D                 = 0;
 
-            GlobalColourTable   = new Color32[ 256 ];
-            LocalColourTable    = new Color32[ 256 ];
-            TransparentIndex    = NoTransparency;
+            GlobalColourTable = new Color32[ 256 ];
+            LocalColourTable  = new Color32[ 256 ];
+            TransparentIndex  = NoTransparency;
 
-            ControlDelay        = 0;
-            ControlDispose      = Disposal.None;
+            ControlDelay      = 0;
+            ControlDispose    = Disposal.None;
 
-            LastImage           = null;
+            PrevImage         = null;
 
             return this;
         }
 
-        // data
-
-        byte[]  Data;
-        int     D;
-
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        byte ReadByte()
-        {
-            return Data[ D++ ];
-        }
-
-        [MethodImpl( MethodImplOptions.AggressiveInlining )]
-        ushort ReadUInt16()
-        {
-            return (ushort) ( Data[ D++ ] | Data[ D++ ] << 8 );
-        }
-
-
-        //------------------------------------------------------------------------------
+        // get all images
 
         public Image[] GetImages()
         {
@@ -159,6 +149,21 @@ namespace MG.GIF
             Array.Resize( ref images, count );
 
             return images;
+        }
+
+        //------------------------------------------------------------------------------
+        // reading data utility functions
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        byte ReadByte()
+        {
+            return Data[ D++ ];
+        }
+
+        [MethodImpl( MethodImplOptions.AggressiveInlining )]
+        ushort ReadUInt16()
+        {
+            return (ushort) ( Data[ D++ ] | Data[ D++ ] << 8 );
         }
 
         //------------------------------------------------------------------------------
@@ -224,6 +229,8 @@ namespace MG.GIF
 
         public Image NextImage()
         {
+            // if at start of data, read header
+
             if( D == 0 )
             {
                 if( Data == null || Data.Length <= 12 )
@@ -234,6 +241,8 @@ namespace MG.GIF
                 ReadHeader();
             }
 
+            // read blocks until we find an image block
+
             while( true )
             {
                 var block = (Block) ReadByte();
@@ -241,6 +250,8 @@ namespace MG.GIF
                 switch( block )
                 {
                     case Block.Image:
+
+                        // return the image if we got one
 
                         var img = ReadImageBlock();
 
@@ -261,13 +272,14 @@ namespace MG.GIF
                                 break;
 
                             default:
-                                SkipBlock();
+                                SkipBlocks();
                                 break;
                         }
 
                         break;
 
                     case Block.End:
+                        // end block - stop!
                         return null;
 
                     default:
@@ -278,7 +290,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private void SkipBlock()
+        private void SkipBlocks()
         {
             var blockSize = Data[ D++ ];
 
@@ -329,10 +341,14 @@ namespace MG.GIF
 
             var flags   = (ImageFlag) Data[ D++ ];
 
+            // bad image if we don't have any dimensions
+
             if( ImageWidth == 0 || ImageHeight == 0 )
             {
                 return null;
             }
+
+            // read colour table
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
@@ -352,22 +368,29 @@ namespace MG.GIF
                 Delay  = ControlDelay * 10 // (gif are in 1/100th second) convert to ms
             };
 
-            img.RawImage = DecompressLZW(); // minimum code size
+            // decompress data into raw image
+
+            img.RawImage = DecompressLZW();
+
+            // deinterlace
 
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
                 img.RawImage = Deinterlace( img.RawImage, ImageWidth );
             }
 
+            // store raw image data if we might need it for the next image
+
             if( ControlDispose == Disposal.None || ControlDispose == Disposal.DoNotDispose )
             {
-                LastImage = img.RawImage;
+                PrevImage = img.RawImage;
             }
 
             return img;
         }
 
         //------------------------------------------------------------------------------
+        // decode interlaced images
 
         protected Color32[] Deinterlace( Color32[] input, int width )
         {
@@ -413,8 +436,8 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
         // DecompressLZW()
-        //  LzwCodeSize setup before call
-        //  optimised for performance using pre-allocated buffers (cut down on allocation overhead)
+        //  optimised for performance using pre-allocated buffers to cut down on
+        //  allocation overhead
 
         int[]    Pow2      = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
         int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
@@ -433,12 +456,12 @@ namespace MG.GIF
 
             var output = new Color32[ Width * Height ];
 
-            if( ControlDispose != Disposal.RestoreBackground && LastImage != null )
+            if( ControlDispose != Disposal.RestoreBackground && PrevImage != null )
             {
-                Array.Copy( LastImage, output, LastImage.Length );
+                Array.Copy( PrevImage, output, PrevImage.Length );
             }
 
-            int row       = ( Height - ImageTop - 1 ) * Width;
+            int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
             int col       = ImageLeft;
             int rightEdge = ImageLeft + ImageWidth;
 
@@ -698,7 +721,7 @@ namespace MG.GIF
             D += bytesAvailable;
 
             // consume any remaining blocks
-            SkipBlock();
+            SkipBlocks();
 
             return output;
         }

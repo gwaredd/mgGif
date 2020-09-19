@@ -1,5 +1,5 @@
 # mgGIF
-> A unity library to parse a GIF file and extracts the images
+> A unity library to parse a GIF file and extracts the images, just for fun
 
 ![Butterfly](https://gwaredd.github.io/mgGif/butterfly.gif)
 
@@ -13,25 +13,37 @@ Alternatively, the [upm](https://github.com/gwaredd/mgGif/tree/upm) branch can b
 git clone -b upm git@github.com:gwaredd/mgGif.git
 ```
 
-Or added to your `Packages/manifest.json` file
+## Usage
 
+Pretty straight forward, pass a `byte[]` and receive an array of raw decompressed images in return.
+
+See ` Assets\Scenes\AnimatedTextures.cs` for an example
+
+```cs
+byte[] bytes = File.ReadAllBytes( filename );
+
+var images = MG.GIF.Decoder.Parse( bytes );
+var tex = images[0].CreateTexture();
 ```
+
+Alternatively, whilst the code is reasonably fast, you can also spread the cost across several frames inside a coroutine if required.
+
+```cs
+IEnumerator TimeSliceDecoding() 
 {
-  "dependencies": {
-    "com.gwaredd.mggif": "https://github.com/gwaredd/mgGif.git#upm",
-    ...
+  var decoder = new MG.GIF.Decoder()
+
+  decoder.Load( bytes );
+
+  var img = NextImage();
+
+  while( img != null )
+  {
+      img.CreateTexture();
+      yield return null;
+      img = NextImage();
   }
 }
 ```
-
-## Usage
-
-```
-byte[] bytes = File.ReadAllBytes( filename );
-
-var gif = MG.GIF.Decoder.Parse( bytes );
-var tex = gif.GetFrame( 0 ).CreateTexture();
-```
-
-See ` Assets\Scenes\AnimatedTextures.cs` for an example
+Note, for convenience with animations there are also `GetFrame()` and `GetNumFrames()` extensions on the `MG.GIF.Image[]` type that skip instant frames (0 delay).
 

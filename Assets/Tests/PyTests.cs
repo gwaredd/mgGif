@@ -191,7 +191,7 @@ namespace MG.GIF
             // read input gif
 
             var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var decoder = new Decoder().Decode( bytes );
+            var decoder = new Decoder().Load( bytes );
             var gif     = decoder.GetImages();
 
             // compare results

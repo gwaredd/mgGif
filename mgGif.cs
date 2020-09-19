@@ -7,8 +7,6 @@ using System.Runtime.CompilerServices;
 
 namespace MG.GIF
 {
-    ////////////////////////////////////////////////////////////////////////////////
-    
     public class Image
     {
         public int       Width;
@@ -32,62 +30,16 @@ namespace MG.GIF
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    public class ImageList
-    {
-        public List<Image> Images = new List<Image>();
-
-        public Image GetImage( int index )
-        {
-            return index < Images.Count ? Images[index] : null;
-        }
-
-        public int NumFrames
-        {
-            get
-            {
-                int count = 0;
-
-                foreach( var img in Images )
-                {
-                    if( img.Delay > 0 )
-                    {
-                        count++;
-                    }
-                }
-
-                return count;
-            }
-        }
-
-        public Image GetFrame( int index )
-        {
-            if( Images.Count == 0 )
-            {
-                return null;
-            }
-
-            foreach( var img in Images )
-            {
-                if( img.Delay > 0 )
-                {
-                    if( index == 0 )
-                    {
-                        return img;
-                    }
-
-                    index--;
-                }
-            }
-
-            return Images[Images.Count - 1];
-        }
-    }
-
-
-    ////////////////////////////////////////////////////////////////////////////////
-
     public class Decoder
     {
+        public string   Version;
+        public ushort   Width;
+        public ushort   Height;
+        public  Color32 BackgroundColour;
+
+
+        //------------------------------------------------------------------------------
+
         [Flags]
         private enum ImageFlag
         {
@@ -120,27 +72,20 @@ namespace MG.GIF
             ReturnToPrevious  = 0x0C
         }
 
-        public string       Version;
-
         const uint          NoCode              = 0xFFFF;
         const ushort        NoTransparency      = 0xFFFF;
 
-        private Color32[]   LastImage           = null;
+        private Color32[]   LastImage;
 
         // colour
-        private Color32[]   GlobalColourTable   = new Color32[ 4096 ];
-        private Color32[]   LocalColourTable    = new Color32[ 4096 ];
-        private Color32[]   ActiveColourTable   = null;
-        private ushort      TransparentIndex    = NoTransparency;
-        public  Color32     BackgroundColour    = new Color32();
+        private Color32[]   GlobalColourTable;
+        private Color32[]   LocalColourTable;
+        private Color32[]   ActiveColourTable;
+        private ushort      TransparentIndex;
 
         // current controls
-        private ushort      ControlDelay        = 0;
-        private Disposal    ControlDispose      = Disposal.None;
-
-        // global image
-        public ushort       Width;
-        public ushort       Height;
+        private ushort      ControlDelay;
+        private Disposal    ControlDispose;
 
         // current image
         private ushort      ImageLeft;
@@ -150,21 +95,33 @@ namespace MG.GIF
 
 
         //------------------------------------------------------------------------------
+
+        public static Image[] Parse( byte[] data )
+        {
+            return new Decoder().Decode( data ).GetImages();
+        }
+
+        public Decoder Decode( byte[] data )
+        {
+            Data = data;
+            D    = 0;
+
+            GlobalColourTable   = new Color32[ 256 ];
+            LocalColourTable    = new Color32[ 256 ];
+            TransparentIndex    = NoTransparency;
+
+            ControlDelay        = 0;
+            ControlDispose      = Disposal.None;
+
+            LastImage           = null;
+
+            return this;
+        }
+
         // data
 
         byte[]  Data;
         int     D;
-
-        public static ImageList Parse( byte[] data )
-        {
-            return new Decoder( data ).Decode();
-        }
-
-        public Decoder( byte[] data )
-        {
-            Data = data;
-            D    = 0;
-        }
 
         [MethodImpl( MethodImplOptions.AggressiveInlining )]
         byte ReadByte()
@@ -181,25 +138,10 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        public ImageList Decode()
-        {
-            var images = new ImageList();
-
-            var img = NextImage();
-
-            while( img != null )
-            {
-                images.Images.Add( img );
-                img = NextImage();
-            }
-
-            return images;
-        }
-
-        public Image[] DecodeArray()
+        public Image[] GetImages()
         {
             var count  = 0;
-            var images = new Image[ 32 ];
+            var images = new Image[ 64 ];
 
             var img = NextImage();
 
@@ -478,7 +420,6 @@ namespace MG.GIF
         int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
         ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
-        
         private Color32[] DecompressLZW()
         {
 #if mgGIF_UNSAFE
@@ -764,5 +705,49 @@ namespace MG.GIF
 #if mgGIF_UNSAFE
     }}
 #endif
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+public static class mgGifImageArrayExtension
+{
+    public static int GetNumFrames( this MG.GIF.Image[] array )
+    {
+        int count = 0;
+
+        foreach( var img in array )
+        {
+            if( img.Delay > 0 )
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static MG.GIF.Image GetFrame( this MG.GIF.Image[] array, int index )
+    {
+        if( array.Length == 0 )
+        {
+            return null;
+        }
+
+        foreach( var img in array )
+        {
+            if( img.Delay > 0 )
+            {
+                if( index == 0 )
+                {
+                    return img;
+                }
+
+                index--;
+            }
+        }
+
+        return array[ array.Length - 1 ];
     }
 }

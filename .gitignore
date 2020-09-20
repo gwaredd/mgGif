@@ -2,6 +2,7 @@ _tmp
 tools
 *.csproj
 *.csproj.user
+bin
 obj
 Logs
 Library
@@ -9,3 +10,7 @@ Temp
 .vs
 *.sln
 UserSettings
+
+!dev/ProfileApp/*.sln
+!dev/ProfileApp/*.csproj
+

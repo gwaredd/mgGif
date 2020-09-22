@@ -1,5 +1,3 @@
-//#define mgGIF_UNSAFE
-
 using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
@@ -31,10 +29,10 @@ namespace MG.GIF
 
     public class Decoder
     {
-        public string   Version;
-        public ushort   Width;
-        public ushort   Height;
-        public  Color32 BackgroundColour;
+        public string  Version;
+        public ushort  Width;
+        public ushort  Height;
+        public Color32 BackgroundColour;
 
 
         //------------------------------------------------------------------------------
@@ -42,25 +40,25 @@ namespace MG.GIF
         [Flags]
         private enum ImageFlag
         {
-            Interlaced      = 0x40,
-            ColourTable     = 0x80,
-            TableSizeMask   = 0x07,
-            BitDepthMask    = 0x70,
+            Interlaced        = 0x40,
+            ColourTable       = 0x80,
+            TableSizeMask     = 0x07,
+            BitDepthMask      = 0x70,
         }
 
         private enum Block
         {
-            Image           = 0x2C,
-            Extension       = 0x21,
-            End             = 0x3B
+            Image             = 0x2C,
+            Extension         = 0x21,
+            End               = 0x3B
         }
 
         private enum Extension
         {
-            GraphicControl  = 0xF9,
-            Comments        = 0xFE,
-            PlainText       = 0x01,
-            ApplicationData = 0xFF
+            GraphicControl    = 0xF9,
+            Comments          = 0xFE,
+            PlainText         = 0x01,
+            ApplicationData   = 0xFF
         }
 
         private enum Disposal
@@ -71,8 +69,8 @@ namespace MG.GIF
             ReturnToPrevious  = 0x0C
         }
 
-        const uint          NoCode              = 0xFFFF;
-        const ushort        NoTransparency      = 0xFFFF;
+        const uint          NoCode         = 0xFFFF;
+        const ushort        NoTransparency = 0xFFFF;
 
         // input stream to decode
         byte[]              Data;
@@ -111,8 +109,8 @@ namespace MG.GIF
 
         public Decoder Load( byte[] data )
         {
-            Data              = data;
-            D                 = 0;
+            Data = data;
+            D = 0;
 
             GlobalColourTable = new Color32[ 256 ];
             LocalColourTable  = new Color32[ 256 ];
@@ -198,7 +196,7 @@ namespace MG.GIF
                 (char) Data[ 3 ],
                 (char) Data[ 4 ],
                 (char) Data[ 5 ]
-            });
+            } );
 
             D = 6;
 
@@ -209,10 +207,10 @@ namespace MG.GIF
 
             // read header
 
-            Width   = ReadUInt16();
-            Height  = ReadUInt16();
+            Width = ReadUInt16();
+            Height = ReadUInt16();
 
-            var flags = (ImageFlag) ReadByte();
+            var flags   = (ImageFlag) ReadByte();
             var bgIndex = Data[ D++ ]; // background colour
 
             D++; // aspect ratio
@@ -445,13 +443,6 @@ namespace MG.GIF
 
         private Color32[] DecompressLZW()
         {
-#if mgGIF_UNSAFE
-            unsafe
-            {
-                fixed ( byte* pData = Data )
-                {
-#endif
-
             // output write position
 
             var output = new Color32[ Width * Height ];
@@ -532,38 +523,28 @@ namespace MG.GIF
 
                     int newBits = 32;
 
-                    if( bytesAvailable >=4 )
+                    if( bytesAvailable >= 4 )
                     {
-#if mgGIF_UNSAFE
-                        shiftRegister = *( (uint*) &pData[D] );
-                        D += 4;
-#else
                         shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 | Data[ D++ ] << 24 );
-#endif
                         bytesAvailable -= 4;
                     }
                     else if( bytesAvailable == 3 )
                     {
-#if mgGIF_UNSAFE
-                        shiftRegister = *( (uint*) &pData[D] );
-                        D += 3;
-#else
                         shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 );
-#endif
                         bytesAvailable = 0;
-                        newBits        = 24;
+                        newBits = 24;
                     }
                     else if( bytesAvailable == 2 )
                     {
-                        shiftRegister  = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 );
+                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 );
                         bytesAvailable = 0;
-                        newBits        = 16;
+                        newBits = 16;
                     }
                     else
                     {
-                        shiftRegister  = Data[ D++ ];
+                        shiftRegister = Data[ D++ ];
                         bytesAvailable = 0;
-                        newBits        = 8;
+                        newBits = 8;
                     }
 
                     if( bitsAvailable > 0 )
@@ -598,7 +579,7 @@ namespace MG.GIF
 
                     // clear previous code
                     previousCode = NoCode;
-                    mask         = (uint) ( nextSize - 1 );
+                    mask = (uint) ( nextSize - 1 );
 
                     continue;
                 }
@@ -669,14 +650,13 @@ namespace MG.GIF
                     }
                 }
 
-
                 // create new code
 
                 if( previousCode != NoCode && numCodes != codeIndex.Length )
                 {
                     // get previous code from buffer
 
-                    codePos    = codeIndex[ previousCode ];
+                    codePos = codeIndex[ previousCode ];
                     codeLength = codes[ codePos++ ];
 
                     // resize buffer if required (should be rare)
@@ -689,11 +669,11 @@ namespace MG.GIF
                     // add new code
 
                     codeIndex[ numCodes++ ] = codesEnd;
-                    codes[ codesEnd++ ]       = (ushort) ( codeLength + 1 );
+                    codes[ codesEnd++ ] = (ushort) ( codeLength + 1 );
 
                     // copy previous code sequence
 
-                    for( int i=0; i < codeLength; i++ )
+                    for( int i = 0; i < codeLength; i++ )
                     {
                         codes[ codesEnd++ ] = codes[ codePos++ ];
                     }
@@ -708,7 +688,7 @@ namespace MG.GIF
                 if( numCodes >= nextSize && codeSize < 12 )
                 {
                     nextSize = Pow2[ ++codeSize ];
-                    mask     = (uint) ( nextSize - 1 );
+                    mask = (uint) ( nextSize - 1 );
                 }
 
                 // remember last code processed
@@ -725,9 +705,6 @@ namespace MG.GIF
 
             return output;
         }
-#if mgGIF_UNSAFE
-    }}
-#endif
     }
 }
 

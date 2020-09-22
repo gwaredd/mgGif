@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace MG.GIF
 {
@@ -449,7 +450,23 @@ namespace MG.GIF
 
             if( ControlDispose != Disposal.RestoreBackground && PrevImage != null )
             {
+                /**
+                unsafe
+                {
+                    fixed( Color32* pSrc = PrevImage )
+                    {
+                        fixed ( Color32* pDst = output )
+                        {
+                            int lengthOfColor32 = Marshal.SizeOf( typeof(Color32) );
+                            int size = lengthOfColor32 * output.Length;
+
+                            Buffer.MemoryCopy( pSrc, pDst, size, size );
+                        }
+                    }
+                }
+                /*/
                 Array.Copy( PrevImage, output, PrevImage.Length );
+                /**/
             }
 
             int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
@@ -673,10 +690,45 @@ namespace MG.GIF
 
                     // copy previous code sequence
 
-                    for( int i = 0; i < codeLength; i++ )
+                    /**
+                    unsafe
                     {
-                        codes[ codesEnd++ ] = codes[ codePos++ ];
+                        fixed ( ushort* pCodes = codes )
+                        {
+                            ushort* pw = &pCodes[ codesEnd ];
+                            ushort* pr = &pCodes[ codePos ];
+
+                            codesEnd += codeLength;
+                            ushort* ps = &pCodes[ codesEnd ];
+
+                            while( pw != ps )
+                            {
+                                *pw++ = *pr++;
+                            }
+                        }
                     }
+                    /*/
+                    //if( codeLength < 12 )
+                    {
+                        var stop = codesEnd + codeLength;
+
+                        while( codesEnd < stop )
+                        {
+                            codes[ codesEnd++ ] = codes[ codePos++ ];
+                        }
+                    }
+                    //else
+                    //{
+                    //    //for( int i = 0; i < codeLength; i++ )
+                    //    //{
+                    //    //    codes[ codesEnd++ ] = codes[ codePos++ ];
+                    //    //}
+
+                    //    var stop = codesEnd + codeLength;
+                    //    Buffer.BlockCopy( codes, codePos, codes, codesEnd, codeLength );
+                    //    codesEnd += codeLength;
+                    //}
+                    /**/
 
                     // append new code
 

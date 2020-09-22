@@ -1,4 +1,5 @@
-﻿namespace UnityEngine
+﻿/**/
+namespace UnityEngine
 {
     public struct Color32
     {
@@ -41,3 +42,4 @@
         public void Apply() { }
     }
 }
+/**/

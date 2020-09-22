@@ -17,7 +17,7 @@ git clone -b upm git@github.com:gwaredd/mgGif.git
 
 Pretty straight forward, pass a `byte[]` and receive an array of raw decompressed images in return.
 
-See ` Assets\Scenes\AnimatedTextures.cs` for an example
+See [Assets\Scenes\AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/master/Assets/Scenes/AnimatedTextures.cs) for an example
 
 ```cs
 byte[] bytes = File.ReadAllBytes( filename );

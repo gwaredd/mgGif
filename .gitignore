@@ -10,6 +10,7 @@ Temp
 .vs
 *.sln
 UserSettings
+_ref
 
 !dev/ProfileApp/*.sln
 !dev/ProfileApp/*.csproj

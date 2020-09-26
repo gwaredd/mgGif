@@ -9,7 +9,7 @@ namespace ProfileApp
     {
         static void Main( string[] args )
         {
-            var dir       = @"C:\dev\mgGIF\Assets\StreamingAssets";
+            var dir       = @"..\..\..\..\Assets\StreamingAssets";
             var filenames = Directory.GetFiles( dir, "*.gif" );
             var filedata  = ( from file in filenames select File.ReadAllBytes( file ) ).ToArray();
 

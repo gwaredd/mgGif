@@ -1,9 +1,10 @@
-#define mgGIF_UNSAFE
+//#define mgGIF_UNSAFE
 //#define TEST
 
 using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
+
 
 namespace MG.GIF
 {
@@ -445,12 +446,18 @@ namespace MG.GIF
 
 #if mgGIF_UNSAFE
 
-        unsafe ushort*[] pIndicies = new ushort*[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+        // TODO: reuse existing buffer
+        // TODO: reverse rows after the fact?
+        // TODO: fast path if copying full image
+        // TODO: batching code extraction
+        // TODO: treat codes as int sequence
+        // TODO: resize array
+
+        unsafe ushort*[] pIndicies  = new ushort*[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+        uint[]           pBitstream = new uint[ 64 ];
 
         unsafe private Color32[] DecompressLZW()
         {
-            // Output?
-
             fixed( ushort* pCodes = codes )
             {
                 fixed( byte* pData = Data )
@@ -679,12 +686,12 @@ namespace MG.GIF
                                 codeLength = *pCodePos++;
 
                                 // resize buffer if required (should be rare)
-                                /* TODO
+                                /** //TODO:
                                 if( codesEnd + codeLength + 1 >= codes.Length )
                                 {
                                     Array.Resize( ref codes, codes.Length * 2 );
                                 }
-                                */
+                                /**/
 
                                 // add new code
 
@@ -693,13 +700,22 @@ namespace MG.GIF
 
                                 // copy previous code sequence
 
-                                var stop = &pCodesEnd[ codeLength ];
-
-                                do
+                                if( codeLength < 16 )
                                 {
-                                    *pCodesEnd++ = *pCodePos++;
+                                    var stop = &pCodesEnd[ codeLength ];
+
+                                    do
+                                    {
+                                        *pCodesEnd++ = *pCodePos++;
+                                    }
+                                    while( pCodesEnd < stop );
                                 }
-                                while( pCodesEnd < stop );
+                                else
+                                {
+                                    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength, codeLength );
+                                    pCodesEnd += codeLength;
+                                }
+
 
                                 // append new code
 
@@ -711,7 +727,7 @@ namespace MG.GIF
                             if( numCodes >= nextSize && codeSize < 12 )
                             {
                                 nextSize = Pow2[ ++codeSize ];
-                                mask = (uint)( nextSize - 1 );
+                                mask     = (uint)( nextSize - 1 );
                             }
 
                             // remember last code processed

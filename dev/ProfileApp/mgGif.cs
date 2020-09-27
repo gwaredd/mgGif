@@ -453,13 +453,15 @@ namespace MG.GIF
         // TODO: treat codes as int sequence
         // TODO: resize array
 
-        unsafe ushort*[] pIndicies  = new ushort*[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+        unsafe ushort*[] pIndicies  = new ushort*[ 4098 ];
         uint[]           pBitstream = new uint[ 64 ];
 
         unsafe private Color32[] DecompressLZW()
         {
             fixed( ushort* pCodes = codes )
             {
+                ushort* pCodeBufferEnd = &pCodes[ codes.Length ];
+
                 fixed( byte* pData = Data )
                 {
                     // output write position
@@ -687,9 +689,13 @@ namespace MG.GIF
 
                                 // resize buffer if required (should be rare)
                                 /** //TODO:
-                                if( codesEnd + codeLength + 1 >= codes.Length )
+                                if( pCodesEnd + codeLength + 1 >= pCodeBufferEnd )
                                 {
                                     Array.Resize( ref codes, codes.Length * 2 );
+                                    pCodes = &codes[ 0 ];
+
+                                    IntPtr hglobal = Marshal.AllocHGlobal(100);
+                                    Marshal.FreeHGlobal(hglobal);
                                 }
                                 /**/
 

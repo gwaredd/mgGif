@@ -31,7 +31,7 @@ namespace MG.GIF
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    public class Decoder
+    public class Decoder : IDisposable
     {
         public string  Version;
         public ushort  Width;
@@ -451,28 +451,29 @@ namespace MG.GIF
         // TODO: fast path if copying full image
         // TODO: batching code extraction
         // TODO: treat codes as int sequence
-        // TODO: resize array
+        // TODO: resize array - marshal alloc / disposable
 
         unsafe ushort*[] pIndicies  = new ushort*[ 4098 ];
         uint[]           pBitstream = new uint[ 64 ];
 
         unsafe private Color32[] DecompressLZW()
         {
+            // output write position
+
+            var output = new Color32[ Width * Height ];
+
+            if( ControlDispose != Disposal.RestoreBackground && PrevImage != null )
+            {
+                Array.Copy( PrevImage, output, PrevImage.Length );
+            }
+
+
             fixed( ushort* pCodes = codes )
             {
                 ushort* pCodeBufferEnd = &pCodes[ codes.Length ];
 
                 fixed( byte* pData = Data )
                 {
-                    // output write position
-
-                    var output = new Color32[ Width * Height ];
-
-                    if( ControlDispose != Disposal.RestoreBackground && PrevImage != null )
-                    {
-                        Array.Copy( PrevImage, output, PrevImage.Length );
-                    }
-
                     fixed( Color32* pOutput = output, pColourTable = ActiveColourTable )
                     {
                         int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
@@ -716,13 +717,15 @@ namespace MG.GIF
                                     }
                                     while( pCodesEnd < stop );
                                 }
-
-/*                                else
+/*
+                                else
                                 {
                                     Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof(ushort), codeLength * sizeof( ushort ) );
                                     pCodesEnd += codeLength;
                                 }
 */
+
+                                
 
                                 // append new code
 
@@ -752,7 +755,15 @@ namespace MG.GIF
             }
         }
 
+        public void Dispose()
+        {
+            // TODO: dispose unmanaged memory
+        }
+
 #else
+        public void Dispose()
+        {
+        }
 
         int[]    codeIndex   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
 #if TEST
@@ -1078,7 +1089,7 @@ namespace MG.GIF
             return output;
         }
 #endif // mgGIF_UNSAFE
-        }
+    }
 }
 
 

@@ -1,4 +1,4 @@
-//#define mgGIF_UNSAFE
+#define mgGIF_UNSAFE
 //#define TEST
 
 using UnityEngine;
@@ -700,7 +700,7 @@ namespace MG.GIF
 
                                 // copy previous code sequence
 
-                                if( codeLength < 16 )
+                                //if( codeLength < 16 )
                                 {
                                     var stop = &pCodesEnd[ codeLength ];
 
@@ -710,12 +710,13 @@ namespace MG.GIF
                                     }
                                     while( pCodesEnd < stop );
                                 }
-                                else
+
+/*                                else
                                 {
-                                    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength, codeLength );
+                                    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof(ushort), codeLength * sizeof( ushort ) );
                                     pCodesEnd += codeLength;
                                 }
-
+*/
 
                                 // append new code
 

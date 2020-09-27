@@ -130,7 +130,10 @@ namespace MG.GIF
                     var i = y * width + x;
                     var j = ( height - y - 1 ) * width + x;
 
-                    Assert.AreEqual( colours[i], frame.RawImage[j] );
+                    Assert.AreEqual( colours[ i ].r, frame.RawImage[ j ].r );
+                    Assert.AreEqual( colours[ i ].g, frame.RawImage[ j ].g );
+                    Assert.AreEqual( colours[ i ].b, frame.RawImage[ j ].b );
+                    Assert.AreEqual( colours[ i ].a, frame.RawImage[ j ].a );
                 }
             }
         }

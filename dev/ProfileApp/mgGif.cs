@@ -210,7 +210,7 @@ namespace MG.GIF
 
             // read header
 
-            Width = ReadUInt16();
+            Width  = ReadUInt16();
             Height = ReadUInt16();
 
             var flags   = (ImageFlag) ReadByte();
@@ -440,8 +440,8 @@ namespace MG.GIF
         //  optimised for performance using pre-allocated buffers to cut down on
         //  allocation overhead
 
-        int[]    Pow2      = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
-        ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+        int[]    Pow2  = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        ushort[] codes = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
 #if mgGIF_UNSAFE
 
@@ -449,7 +449,7 @@ namespace MG.GIF
 
         unsafe private Color32[] DecompressLZW()
         {
-            // Output
+            // Output?
 
             fixed( ushort* pCodes = codes )
             {
@@ -695,10 +695,11 @@ namespace MG.GIF
 
                                 var stop = &pCodesEnd[ codeLength ];
 
-                                while( pCodesEnd < stop )
+                                do
                                 {
                                     *pCodesEnd++ = *pCodePos++;
                                 }
+                                while( pCodesEnd < stop );
 
                                 // append new code
 

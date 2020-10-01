@@ -1,10 +1,9 @@
 #define mgGIF_UNSAFE
-//#define TEST
 
 using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
-
+using System.Runtime.InteropServices;
 
 namespace MG.GIF
 {
@@ -17,10 +16,11 @@ namespace MG.GIF
 
         public Texture2D CreateTexture()
         {
-            var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false );
-
-            tex.filterMode = FilterMode.Point;
-            tex.wrapMode   = TextureWrapMode.Clamp;
+            var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false )
+            {
+                filterMode = FilterMode.Point,
+                wrapMode   = TextureWrapMode.Clamp
+            };
 
             tex.SetPixels32( RawImage );
             tex.Apply();
@@ -100,6 +100,8 @@ namespace MG.GIF
         private Color32[]   PrevImage;
 
 
+        readonly int[]      Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+
         //------------------------------------------------------------------------------
 
         // one shot
@@ -114,7 +116,7 @@ namespace MG.GIF
         public Decoder Load( byte[] data )
         {
             Data = data;
-            D = 0;
+            D    = 0;
 
             GlobalColourTable = new Color32[ 256 ];
             LocalColourTable  = new Color32[ 256 ];
@@ -402,7 +404,7 @@ namespace MG.GIF
 
             for( var row = 0; row < numRows; row++ )
             {
-                var copyRow = 0;
+                int copyRow;
 
                 // every 8th row starting at 0
                 if( row % 8 == 0 )
@@ -441,10 +443,51 @@ namespace MG.GIF
         //  optimised for performance using pre-allocated buffers to cut down on
         //  allocation overhead
 
-        int[]    Pow2  = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
-        ushort[] codes = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
-
 #if mgGIF_UNSAFE
+
+        readonly unsafe ushort*[] pIndicies  = new ushort*[ 4098 ];
+
+        bool    Disposed         = false;
+        int     CodeBufferLength = 0;
+        IntPtr  CodeBufferHandle = IntPtr.Zero;
+
+        public Decoder()
+        {
+            CodeBufferLength = 128 * 1024;
+            CodeBufferHandle = Marshal.AllocHGlobal( CodeBufferLength * sizeof( ushort ) );
+        }
+
+        ~Decoder()
+        {
+            Dispose( false );
+        }
+
+        protected virtual void Dispose( bool disposing )
+        {
+            if( Disposed )
+            {
+                return;
+            }
+
+            if( disposing )
+            {
+                // free managed resources
+            }
+
+            // release unmanaged resources
+            Marshal.FreeHGlobal( CodeBufferHandle );
+            CodeBufferHandle = IntPtr.Zero;
+
+            Disposed = true;
+        }
+
+        public void Dispose()
+        {
+            Dispose( true );
+            GC.SuppressFinalize( this );
+        }
+
+        // 227 debug @100
 
         // TODO: reuse existing buffer
         // TODO: reverse rows after the fact?
@@ -452,9 +495,6 @@ namespace MG.GIF
         // TODO: batching code extraction
         // TODO: treat codes as int sequence
         // TODO: resize array - marshal alloc / disposable
-
-        unsafe ushort*[] pIndicies  = new ushort*[ 4098 ];
-        uint[]           pBitstream = new uint[ 64 ];
 
         unsafe private Color32[] DecompressLZW()
         {
@@ -467,308 +507,306 @@ namespace MG.GIF
                 Array.Copy( PrevImage, output, PrevImage.Length );
             }
 
+            var pCodes         = (ushort*) CodeBufferHandle.ToPointer();
+            var pCodeBufferEnd = pCodes + CodeBufferLength;
 
-            fixed( ushort* pCodes = codes )
+            fixed( byte* pData = Data )
             {
-                ushort* pCodeBufferEnd = &pCodes[ codes.Length ];
-
-                fixed( byte* pData = Data )
+                fixed( Color32* pOutput = output, pColourTable = ActiveColourTable )
                 {
-                    fixed( Color32* pOutput = output, pColourTable = ActiveColourTable )
+                    int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
+                    int col       = ImageLeft;
+                    int rightEdge = ImageLeft + ImageWidth;
+
+                    // setup codes
+
+                    int minimumCodeSize = Data[ D++ ];
+
+                    if( minimumCodeSize > 11 )
                     {
-                        int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
-                        int col       = ImageLeft;
-                        int rightEdge = ImageLeft + ImageWidth;
+                        minimumCodeSize = 11;
+                    }
 
-                        // setup codes
+                    var codeSize        = minimumCodeSize + 1;
+                    var nextSize        = Pow2[ codeSize ];
+                    var maximumCodeSize = Pow2[ minimumCodeSize ];
+                    var clearCode       = maximumCodeSize;
+                    var endCode         = maximumCodeSize + 1;
 
-                        int minimumCodeSize = Data[ D++ ];
+                    // initialise buffers
 
-                        if( minimumCodeSize > 11 )
+                    var numCodes = maximumCodeSize + 2;
+                    ushort* pCodesEnd = pCodes;
+
+                    for( ushort i = 0; i < numCodes; i++ )
+                    {
+                        pIndicies[ i ] = pCodesEnd;
+                        *pCodesEnd++ = 1;
+                        *pCodesEnd++ = i;
+                    }
+
+                    // LZW decode loop
+
+                    uint previousCode   = NoCode; // last code processed
+                    uint mask           = (uint) ( nextSize - 1 ); // mask out code bits
+                    uint shiftRegister  = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+
+                    int  bitsAvailable  = 0; // number of bits available to read in the shift register
+                    int  bytesAvailable = 0; // number of bytes left in current block
+
+                    byte* pD = pData;
+
+                    while( true )
+                    {
+                        // get next code
+
+                        uint curCode = shiftRegister & mask;
+
+                        if( bitsAvailable >= codeSize )
                         {
-                            minimumCodeSize = 11;
+                            bitsAvailable -= codeSize;
+                            shiftRegister >>= codeSize;
                         }
-
-                        var codeSize        = minimumCodeSize + 1;
-                        var nextSize        = Pow2[ codeSize ];
-                        var maximumCodeSize = Pow2[ minimumCodeSize ];
-                        var clearCode       = maximumCodeSize;
-                        var endCode         = maximumCodeSize + 1;
-
-                        // initialise buffers
-
-                        var numCodes = maximumCodeSize + 2;
-                        ushort* pCodesEnd = pCodes;
-
-                        for( ushort i = 0; i < numCodes; i++ )
+                        else
                         {
-                            pIndicies[ i ] = pCodesEnd;
-                            *pCodesEnd++ = 1;
-                            *pCodesEnd++ = i;
-                        }
+                            // reload shift register
 
-                        // LZW decode loop
-
-                        uint previousCode   = NoCode; // last code processed
-                        uint mask           = (uint) ( nextSize - 1 ); // mask out code bits
-                        uint shiftRegister  = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
-
-                        int  bitsAvailable  = 0; // number of bits available to read in the shift register
-                        int  bytesAvailable = 0; // number of bytes left in current block
-
-                        byte* pD = pData;
-
-                        while( true )
-                        {
-                            // get next code
-
-                            uint curCode = shiftRegister & mask;
-
-                            if( bitsAvailable >= codeSize )
+                            // if start of new block
+                            if( bytesAvailable == 0 )
                             {
-                                bitsAvailable -= codeSize;
-                                shiftRegister >>= codeSize;
-                            }
-                            else
-                            {
-                                // reload shift register
+                                // read blocksize
+                                pD = &pData[ D++ ];
+                                bytesAvailable = *pD++;
+                                D += bytesAvailable;
 
-                                // if start of new block
+                                // exit if end of stream
                                 if( bytesAvailable == 0 )
                                 {
-                                    // read blocksize
-                                    pD = &pData[ D++ ];
-                                    bytesAvailable = *pD++;
-                                    D += bytesAvailable;
-
-                                    // exit if end of stream
-                                    if( bytesAvailable == 0 )
-                                    {
-                                        return output;
-                                    }
-                                }
-
-
-                                int newBits = 32;
-
-                                if( bytesAvailable >= 4 )
-                                {
-                                    shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 | *pD++ << 24 );
-                                    bytesAvailable -= 4;
-                                }
-                                else if( bytesAvailable == 3 )
-                                {
-                                    shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 );
-                                    bytesAvailable = 0;
-                                    newBits = 24;
-                                }
-                                else if( bytesAvailable == 2 )
-                                {
-                                    shiftRegister = (uint)( *pD++ | *pD++ << 8 );
-                                    bytesAvailable = 0;
-                                    newBits = 16;
-                                }
-                                else
-                                {
-                                    shiftRegister = *pD++;
-                                    bytesAvailable = 0;
-                                    newBits = 8;
-                                }
-
-                                if( bitsAvailable > 0 )
-                                {
-                                    var bitsRemaining = codeSize - bitsAvailable;
-                                    curCode |= ( shiftRegister << bitsAvailable ) & mask;
-                                    shiftRegister >>= bitsRemaining;
-                                    bitsAvailable = newBits - bitsRemaining;
-                                }
-                                else
-                                {
-                                    curCode = shiftRegister & mask;
-                                    shiftRegister >>= codeSize;
-                                    bitsAvailable = newBits - codeSize;
+                                    return output;
                                 }
                             }
 
-                            // process code
 
-                            bool plusOne = false;
-                            ushort* pCodePos = null;
+                            int newBits = 32;
 
-                            if( curCode == clearCode )
+                            if( bytesAvailable >= 4 )
                             {
-                                // reset codes
-                                codeSize = minimumCodeSize + 1;
-                                nextSize = Pow2[ codeSize ];
-                                numCodes = maximumCodeSize + 2;
-
-                                // reset buffer write pos
-                                pCodesEnd = &pCodes[ numCodes * 2 ];
-
-                                // clear previous code
-                                previousCode = NoCode;
-                                mask = (uint)( nextSize - 1 );
-
-                                continue;
+                                shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 | *pD++ << 24 );
+                                bytesAvailable -= 4;
                             }
-                            else if( curCode == endCode )
+                            else if( bytesAvailable == 3 )
                             {
-                                // stop
-                                break;
+                                shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 );
+                                bytesAvailable = 0;
+                                newBits = 24;
                             }
-                            else if( curCode < numCodes )
+                            else if( bytesAvailable == 2 )
                             {
-                                // write existing code
-                                pCodePos = pIndicies[ curCode ];
-                            }
-                            else if( previousCode != NoCode )
-                            {
-                                // write previous code
-                                pCodePos = pIndicies[ previousCode ];
-                                plusOne = true;
+                                shiftRegister = (uint)( *pD++ | *pD++ << 8 );
+                                bytesAvailable = 0;
+                                newBits = 16;
                             }
                             else
                             {
-                                continue;
+                                shiftRegister = *pD++;
+                                bytesAvailable = 0;
+                                newBits = 8;
                             }
 
-
-                            // output colours
-
-                            var codeLength = *pCodePos++;
-                            var newCode    = *pCodePos;
-                            var end        = &pCodePos[ codeLength ];
-
-                            while( pCodePos < end )
+                            if( bitsAvailable > 0 )
                             {
-                                var code = *pCodePos++;
-
-                                if( code != TransparentIndex && col < Width )
-                                {
-                                    pOutput[ row + col ] = pColourTable[ code ];
-                                }
-
-                                if( ++col == rightEdge )
-                                {
-                                    col = ImageLeft;
-                                    row -= Width;
-
-                                    if( row < 0 )
-                                    {
-                                        goto Exit;
-                                    }
-                                }
+                                var bitsRemaining = codeSize - bitsAvailable;
+                                curCode |= ( shiftRegister << bitsAvailable ) & mask;
+                                shiftRegister >>= bitsRemaining;
+                                bitsAvailable = newBits - bitsRemaining;
                             }
-
-                            if( plusOne )
+                            else
                             {
-                                if( newCode != TransparentIndex && col < Width )
-                                {
-                                    pOutput[ row + col ] = pColourTable[ newCode ];
-                                }
-
-                                if( ++col == rightEdge )
-                                {
-                                    col = ImageLeft;
-                                    row -= Width;
-
-                                    if( row < 0 )
-                                    {
-                                        goto Exit;
-                                    }
-                                }
+                                curCode = shiftRegister & mask;
+                                shiftRegister >>= codeSize;
+                                bitsAvailable = newBits - codeSize;
                             }
-
-                            // create new code
-
-                            if( previousCode != NoCode && numCodes != pIndicies.Length )
-                            {
-                                // get previous code from buffer
-
-                                pCodePos = pIndicies[ previousCode ];
-                                codeLength = *pCodePos++;
-
-                                // resize buffer if required (should be rare)
-                                /** //TODO:
-                                if( pCodesEnd + codeLength + 1 >= pCodeBufferEnd )
-                                {
-                                    Array.Resize( ref codes, codes.Length * 2 );
-                                    pCodes = &codes[ 0 ];
-
-                                    IntPtr hglobal = Marshal.AllocHGlobal(100);
-                                    Marshal.FreeHGlobal(hglobal);
-                                }
-                                /**/
-
-                                // add new code
-
-                                pIndicies[ numCodes++ ] = pCodesEnd;
-                                *pCodesEnd++ = (ushort)( codeLength + 1 );
-
-                                // copy previous code sequence
-
-                                //if( codeLength < 16 )
-                                {
-                                    var stop = &pCodesEnd[ codeLength ];
-
-                                    do
-                                    {
-                                        *pCodesEnd++ = *pCodePos++;
-                                    }
-                                    while( pCodesEnd < stop );
-                                }
-/*
-                                else
-                                {
-                                    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof(ushort), codeLength * sizeof( ushort ) );
-                                    pCodesEnd += codeLength;
-                                }
-*/
-
-                                
-
-                                // append new code
-
-                                *pCodesEnd++ = newCode;
-                            }
-
-                            // increase code size?
-
-                            if( numCodes >= nextSize && codeSize < 12 )
-                            {
-                                nextSize = Pow2[ ++codeSize ];
-                                mask     = (uint)( nextSize - 1 );
-                            }
-
-                            // remember last code processed
-                            previousCode = curCode;
                         }
 
-                    Exit:
+                        // process code
 
-                        // consume any remaining blocks
-                        SkipBlocks();
+                        bool plusOne = false;
+                        ushort* pCodePos = null;
 
-                        return output;
+                        if( curCode == clearCode )
+                        {
+                            // reset codes
+                            codeSize = minimumCodeSize + 1;
+                            nextSize = Pow2[ codeSize ];
+                            numCodes = maximumCodeSize + 2;
+
+                            // reset buffer write pos
+                            pCodesEnd = &pCodes[ numCodes * 2 ];
+
+                            // clear previous code
+                            previousCode = NoCode;
+                            mask = (uint)( nextSize - 1 );
+
+                            continue;
+                        }
+                        else if( curCode == endCode )
+                        {
+                            // stop
+                            break;
+                        }
+                        else if( curCode < numCodes )
+                        {
+                            // write existing code
+                            pCodePos = pIndicies[ curCode ];
+                        }
+                        else if( previousCode != NoCode )
+                        {
+                            // write previous code
+                            pCodePos = pIndicies[ previousCode ];
+                            plusOne = true;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+
+                        // output colours
+
+                        var codeLength = *pCodePos++;
+                        var newCode    = *pCodePos;
+                        var end        = &pCodePos[ codeLength ];
+
+                        while( pCodePos < end )
+                        {
+                            var code = *pCodePos++;
+
+                            if( code != TransparentIndex && col < Width )
+                            {
+                                pOutput[ row + col ] = pColourTable[ code ];
+                            }
+
+                            if( ++col == rightEdge )
+                            {
+                                col = ImageLeft;
+                                row -= Width;
+
+                                if( row < 0 )
+                                {
+                                    goto Exit;
+                                }
+                            }
+                        }
+
+                        if( plusOne )
+                        {
+                            if( newCode != TransparentIndex && col < Width )
+                            {
+                                pOutput[ row + col ] = pColourTable[ newCode ];
+                            }
+
+                            if( ++col == rightEdge )
+                            {
+                                col = ImageLeft;
+                                row -= Width;
+
+                                if( row < 0 )
+                                {
+                                    goto Exit;
+                                }
+                            }
+                        }
+
+                        // create new code
+
+                        if( previousCode != NoCode && numCodes != pIndicies.Length )
+                        {
+                            // get previous code from buffer
+
+                            pCodePos = pIndicies[ previousCode ];
+                            codeLength = *pCodePos++;
+
+                            // resize buffer if required (should be rare)
+
+                            if( pCodesEnd + codeLength + 1 >= pCodeBufferEnd )
+                            {
+                                var pBase = pCodes;
+
+                                // realloc buffer
+                                CodeBufferLength *= 2;
+                                CodeBufferHandle = Marshal.ReAllocHGlobal( CodeBufferHandle, (IntPtr)( CodeBufferLength * sizeof( ushort ) ) );
+
+                                pCodes         = (ushort*) CodeBufferHandle.ToPointer();
+                                pCodeBufferEnd = pCodes + CodeBufferLength;
+
+                                // rebase pointers
+                                pCodesEnd = pCodes + ( pCodesEnd - pBase );
+
+                                for( int i=0; i < numCodes; i++ )
+                                {
+                                    pIndicies[ i ] = pCodes + ( pIndicies[ i ] - pBase );
+                                }
+
+                                pCodePos = pIndicies[ previousCode ];
+                                pCodePos++;
+
+                            }
+
+                            // add new code
+
+                            pIndicies[ numCodes++ ] = pCodesEnd;
+                            *pCodesEnd++ = (ushort)( codeLength + 1 );
+
+                            // copy previous code sequence
+
+                            //if( codeLength < 16 )
+                            {
+                                var stop = pCodesEnd + codeLength;
+
+                                do
+                                {
+                                    *pCodesEnd++ = *pCodePos++;
+                                }
+                                while( pCodesEnd < stop );
+                            }
+                            //else
+                            //{
+                            //    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof(ushort), codeLength * sizeof( ushort ) );
+                            //    pCodesEnd += codeLength;
+                            //}
+
+
+
+                            // append new code
+
+                            *pCodesEnd++ = newCode;
+                        }
+
+                        // increase code size?
+
+                        if( numCodes >= nextSize && codeSize < 12 )
+                        {
+                            nextSize = Pow2[ ++codeSize ];
+                            mask     = (uint)( nextSize - 1 );
+                        }
+
+                        // remember last code processed
+                        previousCode = curCode;
                     }
+
+                Exit:
+
+                    // consume any remaining blocks
+                    SkipBlocks();
+
+                    return output;
                 }
             }
         }
 
-        public void Dispose()
-        {
-            // TODO: dispose unmanaged memory
-        }
-
 #else
-        public void Dispose()
-        {
-        }
-
         int[]    codeIndex   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-#if TEST
-        uint[]   inputBuffer = new uint[ 256 ];
-#endif
+        ushort[] codes = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
         private Color32[] DecompressLZW()
         {
@@ -820,9 +858,6 @@ namespace MG.GIF
 
             int  bitsAvailable  = 0; // number of bits available to read in the shift register
             int  bytesAvailable = 0; // number of bytes left in current block
-#if TEST
-            int  byteIndex = 0;
-#endif
 
             while( true )
             {
@@ -839,51 +874,6 @@ namespace MG.GIF
                 {
                     // reload shift register
 
-#if TEST
-                    // if start of new block
-                    if( bytesAvailable == 0 )
-                    {
-                        // read blocksize
-                        bytesAvailable = Data[ D++ ];
-
-                        // exit if end of stream
-                        if( bytesAvailable == 0 )
-                        {
-                            return output;
-                        }
-
-                        // copy to int array
-                        inputBuffer[ ( bytesAvailable - 1 ) / 4 ] = 0;
-                        Buffer.BlockCopy( Data, D, inputBuffer, 0, bytesAvailable );
-                        D += bytesAvailable;
-                        byteIndex = 0;
-                    }
-
-
-                int newBits = 32;
-
-                shiftRegister = inputBuffer[ byteIndex++ ];
-
-                if( bytesAvailable >= 4 )
-                {
-                    bytesAvailable -= 4;
-                }
-                else if( bytesAvailable == 3 )
-                {
-                    bytesAvailable = 0;
-                    newBits = 24;
-                }
-                else if( bytesAvailable == 2 )
-                {
-                    bytesAvailable = 0;
-                    newBits = 16;
-                }
-                else
-                {
-                    bytesAvailable = 0;
-                    newBits = 8;
-                }
-#else
 
                     // if start of new block
                     if( bytesAvailable == 0 )
@@ -924,7 +914,6 @@ namespace MG.GIF
                         bytesAvailable = 0;
                         newBits = 8;
                     }
-#endif
 
                     if( bitsAvailable > 0 )
                     {
@@ -1078,10 +1067,8 @@ namespace MG.GIF
 
         Exit:
 
-#if !TEST
             // skip any remaining bytes
             D += bytesAvailable;
-#endif
 
             // consume any remaining blocks
             SkipBlocks();
@@ -1095,7 +1082,7 @@ namespace MG.GIF
 
 ////////////////////////////////////////////////////////////////////////////////
 
-public static class mgGifImageArrayExtension
+public static class MgGifImageArrayExtension
 {
     public static int GetNumFrames( this MG.GIF.Image[] array )
     {

@@ -494,7 +494,6 @@ namespace MG.GIF
         // TODO: fast path if copying full image
         // TODO: batching code extraction
         // TODO: treat codes as int sequence
-        // TODO: resize array - marshal alloc / disposable
 
         unsafe private Color32[] DecompressLZW()
         {

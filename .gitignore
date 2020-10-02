@@ -1,7 +1,7 @@
 _tmp
 tools
 *.csproj
-*.csproj.user
+*.user
 bin
 obj
 Logs

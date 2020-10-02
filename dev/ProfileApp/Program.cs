@@ -27,7 +27,14 @@ namespace ProfileApp
 
                 foreach( var file in filedata )
                 {
-                    decoder.Load( file ).GetImages();
+                    decoder.Load( file );
+
+                    var img = decoder.NextImage();
+
+                    while( img != null )
+                    {
+                        img = decoder.NextImage();
+                    }
                 }
 
                 sw.Stop();

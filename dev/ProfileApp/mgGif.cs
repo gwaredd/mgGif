@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 
 namespace MG.GIF
 {
+    ////////////////////////////////////////////////////////////////////////////////
+
     public class Image
     {
         public int       Width;
@@ -104,11 +106,10 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        // one shot
-
-        public static Image[] Parse( byte[] data )
+        public Decoder( byte[] data )
+            : this()
         {
-            return new Decoder().Load( data ).GetImages();
+            Load( data );
         }
 
         // load data
@@ -130,30 +131,6 @@ namespace MG.GIF
             return this;
         }
 
-        // get all images
-
-        public Image[] GetImages()
-        {
-            var count  = 0;
-            var images = new Image[ 64 ];
-
-            var img = NextImage();
-
-            while( img != null )
-            {
-                if( count == images.Length )
-                {
-                    Array.Resize( ref images, count * 2 );
-                }
-
-                images[ count++ ] = img;
-                img = NextImage();
-            }
-
-            Array.Resize( ref images, count );
-
-            return images;
-        }
 
         //------------------------------------------------------------------------------
         // reading data utility functions
@@ -493,13 +470,10 @@ namespace MG.GIF
             GC.SuppressFinalize( this );
         }
 
-        // 227 debug @100
-
         // TODO: reuse existing buffer
-        // TODO: reverse rows after the fact?
         // TODO: fast path if copying full image
+        // TODO: reverse rows after the fact?
         // TODO: batching code extraction
-        // TODO: treat codes as int sequence
 
         private unsafe Color32[] DecompressLZW()
         {
@@ -1067,46 +1041,3 @@ namespace MG.GIF
     }
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
-
-public static class MgGifImageArrayExtension
-{
-    public static int GetNumFrames( this MG.GIF.Image[] array )
-    {
-        int count = 0;
-
-        foreach( var img in array )
-        {
-            if( img.Delay > 0 )
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    public static MG.GIF.Image GetFrame( this MG.GIF.Image[] array, int index )
-    {
-        if( array.Length == 0 )
-        {
-            return null;
-        }
-
-        foreach( var img in array )
-        {
-            if( img.Delay > 0 )
-            {
-                if( index == 0 )
-                {
-                    return img;
-                }
-
-                index--;
-            }
-        }
-
-        return array[ array.Length - 1 ];
-    }
-}

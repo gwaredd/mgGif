@@ -88,7 +88,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // compare output against reference image
 
-        private void ValidatePixels( Image[] gif, Image frame, string referenceFile )
+        private void ValidatePixels( List<Image> images, Image frame, string referenceFile )
         {
             if( frame == null && referenceFile == "transparent-dot.rgba" )
             {
@@ -118,8 +118,8 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            var width  = gif[ 0 ].Width;
-            var height = gif[ 0 ].Height;
+            var width  = images[ 0 ].Width;
+            var height = images[ 0 ].Height;
 
             for( var y = 0; y < height; y++ )
             {
@@ -141,7 +141,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // check frame against config values
 
-        private void ValidateFrame( int frameIndex, string frameName, Image[] images )
+        private void ValidateFrame( int frameIndex, string frameName, List<Image> images )
         {
             var handle = $"[{frameName}].";
 
@@ -173,7 +173,7 @@ namespace MG.GIF
                 else if( kv[1] == "delay" )
                 {
                     Assert.IsNotNull( images );
-                    Assert.IsTrue( frameIndex < images.Length );
+                    Assert.IsTrue( frameIndex < images.Count );
 
                     var expected = Get(key);
 
@@ -195,8 +195,16 @@ namespace MG.GIF
             // read input gif
 
             var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var decoder = new Decoder().Load( bytes );
-            var gif     = decoder.GetImages();
+            var decoder = new Decoder( bytes );
+
+            var images = new List<Image>();
+            var img = decoder.NextImage();
+
+            while( img != null )
+            {
+                images.Add( img );
+                img = decoder.NextImage();
+            }
 
             // compare results
 
@@ -213,15 +221,12 @@ namespace MG.GIF
                         // test gif for input
                         break;
 
-                    case "comment":       // plain text extension
-                    case "xmp-data":      // XMP data extension
-                    case "color-profile": // ICC colour profile extension
-                        // ignore
-                        break;
-
-                                            // Netscape or Animation extension
+                    case "comment":         // plain text extension
+                    case "xmp-data":        // XMP data extension
+                    case "color-profile":   // ICC colour profile extension
                     case "buffer-size":     // size of buffer before playing
                     case "force-animation": // default to true
+                    case "loop-count":
                         // ignore
                         break;
 
@@ -235,21 +240,6 @@ namespace MG.GIF
 
                     case "height":
                         Assert.AreEqual( Get( "height" ), decoder.Height.ToString() );
-                        break;
-
-                    case "loop-count":
-
-                        //var loop_count = Get( "loop-count" );
-
-                        //if( loop_count == "infinite" )
-                        //{
-                        //    Assert.AreEqual( 0xFFFF.ToString(), gif.LoopCount.ToString() );
-                        //}
-                        //else
-                        //{
-                        //    Assert.AreEqual( loop_count, gif.LoopCount.ToString() );
-                        //}
-
                         break;
 
                     case "background":
@@ -270,7 +260,7 @@ namespace MG.GIF
 
                         for( int i = 0; i < frames.Length; i++ )
                         {
-                            ValidateFrame( i, frames[i], gif );
+                            ValidateFrame( i, frames[i], images );
                         }
 
                         break;
@@ -405,5 +395,49 @@ namespace MG.GIF
         [Test] public void Test_zero_height()                               { ValidateConfig( "zero-height" ); }
         [Test] public void Test_zero_size()                                 { ValidateConfig( "zero-size" ); }
         [Test] public void Test_zero_width()                                { ValidateConfig( "zero-width" ); }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+public static class MgGifImageArrayExtension
+{
+    public static int GetNumFrames( this List<MG.GIF.Image> images )
+    {
+        int count = 0;
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static MG.GIF.Image GetFrame( this List<MG.GIF.Image> images, int index )
+    {
+        if( images.Count == 0 )
+        {
+            return null;
+        }
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                if( index == 0 )
+                {
+                    return img;
+                }
+
+                index--;
+            }
+        }
+
+        return images[ images.Count - 1 ];
     }
 }

@@ -447,14 +447,16 @@ namespace MG.GIF
 
         readonly unsafe ushort*[] pIndicies  = new ushort*[ 4098 ];
 
-        bool    Disposed         = false;
-        int     CodeBufferLength = 0;
-        IntPtr  CodeBufferHandle = IntPtr.Zero;
+        bool    Disposed    = false;
+        int     CodesLength = 0;
+        IntPtr  CodesHandle = IntPtr.Zero;
+        IntPtr  CurBlock    = IntPtr.Zero;
 
         public Decoder()
         {
-            CodeBufferLength = 128 * 1024;
-            CodeBufferHandle = Marshal.AllocHGlobal( CodeBufferLength * sizeof( ushort ) );
+            CodesLength = 128 * 1024;
+            CodesHandle = Marshal.AllocHGlobal( CodesLength * sizeof( ushort ) );
+            CurBlock    = Marshal.AllocHGlobal( 64 * sizeof( uint ) );
         }
 
         ~Decoder()
@@ -475,10 +477,14 @@ namespace MG.GIF
             }
 
             // release unmanaged resources
-            Marshal.FreeHGlobal( CodeBufferHandle );
-            CodeBufferHandle = IntPtr.Zero;
 
-            Disposed = true;
+            Marshal.FreeHGlobal( CodesHandle );
+            Marshal.FreeHGlobal( CurBlock );
+
+            CodesHandle = IntPtr.Zero;
+            CurBlock    = IntPtr.Zero;
+
+            Disposed    = true;
         }
 
         public void Dispose()
@@ -495,7 +501,7 @@ namespace MG.GIF
         // TODO: batching code extraction
         // TODO: treat codes as int sequence
 
-        unsafe private Color32[] DecompressLZW()
+        private unsafe Color32[] DecompressLZW()
         {
             // output write position
 
@@ -506,8 +512,9 @@ namespace MG.GIF
                 Array.Copy( PrevImage, output, PrevImage.Length );
             }
 
-            var pCodes         = (ushort*) CodeBufferHandle.ToPointer();
-            var pCodeBufferEnd = pCodes + CodeBufferLength;
+            var pCurBlock      = (uint*) CurBlock.ToPointer();
+            var pCodes         = (ushort*) CodesHandle.ToPointer();
+            var pCodeBufferEnd = pCodes + CodesLength;
 
             fixed( byte* pData = Data )
             {
@@ -553,7 +560,7 @@ namespace MG.GIF
                     int  bitsAvailable  = 0; // number of bits available to read in the shift register
                     int  bytesAvailable = 0; // number of bytes left in current block
 
-                    byte* pD = pData;
+                    uint* pD = pCurBlock;
 
                     while( true )
                     {
@@ -571,11 +578,11 @@ namespace MG.GIF
                             // reload shift register
 
                             // if start of new block
-                            if( bytesAvailable == 0 )
+                            if( bytesAvailable <= 0 )
                             {
                                 // read blocksize
-                                pD = &pData[ D++ ];
-                                bytesAvailable = *pD++;
+                                var pBlock = &pData[ D++ ];
+                                bytesAvailable = *pBlock++;
                                 D += bytesAvailable;
 
                                 // exit if end of stream
@@ -583,34 +590,16 @@ namespace MG.GIF
                                 {
                                     return output;
                                 }
+
+                                pCurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0;
+                                Buffer.MemoryCopy( pBlock, pCurBlock, 256, bytesAvailable );
+                                pD = pCurBlock;
                             }
 
 
-                            int newBits = 32;
-
-                            if( bytesAvailable >= 4 )
-                            {
-                                shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 | *pD++ << 24 );
-                                bytesAvailable -= 4;
-                            }
-                            else if( bytesAvailable == 3 )
-                            {
-                                shiftRegister = (uint)( *pD++ | *pD++ << 8 | *pD++ << 16 );
-                                bytesAvailable = 0;
-                                newBits = 24;
-                            }
-                            else if( bytesAvailable == 2 )
-                            {
-                                shiftRegister = (uint)( *pD++ | *pD++ << 8 );
-                                bytesAvailable = 0;
-                                newBits = 16;
-                            }
-                            else
-                            {
-                                shiftRegister = *pD++;
-                                bytesAvailable = 0;
-                                newBits = 8;
-                            }
+                            shiftRegister = *pD++;
+                            int newBits = bytesAvailable >= 4 ? 32 : bytesAvailable * 8;
+                            bytesAvailable -= 4;
 
                             if( bitsAvailable > 0 )
                             {
@@ -732,11 +721,11 @@ namespace MG.GIF
                                 var pBase = pCodes;
 
                                 // realloc buffer
-                                CodeBufferLength *= 2;
-                                CodeBufferHandle = Marshal.ReAllocHGlobal( CodeBufferHandle, (IntPtr)( CodeBufferLength * sizeof( ushort ) ) );
+                                CodesLength *= 2;
+                                CodesHandle = Marshal.ReAllocHGlobal( CodesHandle, (IntPtr)( CodesLength * sizeof( ushort ) ) );
 
-                                pCodes         = (ushort*) CodeBufferHandle.ToPointer();
-                                pCodeBufferEnd = pCodes + CodeBufferLength;
+                                pCodes         = (ushort*) CodesHandle.ToPointer();
+                                pCodeBufferEnd = pCodes + CodesLength;
 
                                 // rebase pointers
                                 pCodesEnd = pCodes + ( pCodesEnd - pBase );

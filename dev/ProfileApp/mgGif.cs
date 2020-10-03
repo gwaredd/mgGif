@@ -4,6 +4,7 @@ using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Windows.Media;
 
 namespace MG.GIF
 {
@@ -452,38 +453,35 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
         // DecompressLZW()
-        //  optimised for performance using pre-allocated buffers to cut down on
-        //  allocation overhead
 
 #if mgGIF_UNSAFE
 
-        const int MaxCodes = 4096;
+        bool        Disposed = false;
 
-        bool     Disposed    = false;
-        int      CodesLength = 0;
-        IntPtr   CodesHandle = IntPtr.Zero;
-        IntPtr   CurBlock    = IntPtr.Zero;
-        IntPtr   Indices     = IntPtr.Zero;
-        uint*    pCurBlock   = null;
-        ushort*  pCodes      = null;
-        ushort** pIndicies   = null;
+        int         CodesLength;
+        IntPtr      CodesHandle;
+        ushort*     pCodes;
 
+        IntPtr      CurBlock;
+        uint*       pCurBlock;
+
+        const int   MaxCodes = 4096;
+        IntPtr      Indices;
+        ushort**    pIndicies;
 
         public Decoder()
         {
+            // unmanaged allocations
+
             CodesLength = 128 * 1024;
             CodesHandle = Marshal.AllocHGlobal( CodesLength * sizeof( ushort ) );
+            pCodes      = (ushort*) CodesHandle.ToPointer();
+
             CurBlock    = Marshal.AllocHGlobal( 64 * sizeof( uint ) );
+            pCurBlock   = (uint*) CurBlock.ToPointer();
+
             Indices     = Marshal.AllocHGlobal( MaxCodes * sizeof( ushort* ) );
-
-            pCurBlock = (uint*) CurBlock.ToPointer();
-            pCodes    = (ushort*) CodesHandle.ToPointer();
-            pIndicies = (ushort**) Indices.ToPointer();
-        }
-
-        ~Decoder()
-        {
-            Dispose( false );
+            pIndicies   = (ushort**) Indices.ToPointer();
         }
 
         protected virtual void Dispose( bool disposing )
@@ -493,18 +491,18 @@ namespace MG.GIF
                 return;
             }
 
-            if( disposing )
-            {
-                // free managed resources
-            }
-
             // release unmanaged resources
 
             Marshal.FreeHGlobal( CodesHandle );
             Marshal.FreeHGlobal( CurBlock );
             Marshal.FreeHGlobal( Indices );
             
-            Disposed    = true;
+            Disposed = true;
+        }
+
+        ~Decoder()
+        {
+            Dispose( false );
         }
 
         public void Dispose()
@@ -513,6 +511,7 @@ namespace MG.GIF
             GC.SuppressFinalize( this );
         }
 
+        // TODO: rejig right margin logic to use incremental writes
         // TODO: fast path if copying full image
         // TODO: forward write with reversal of rows after the fact?
         // TODO: batching code extraction
@@ -525,9 +524,13 @@ namespace MG.GIF
             {
                 fixed( Color32* pOutput = Output, pColourTable = ActiveColourTable )
                 {
-                    int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
-                    int col       = ImageLeft;
-                    int rightEdge = ImageLeft + ImageWidth;
+                    var row  = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
+                    var safeWidth = ImageLeft + ImageWidth > Width ? Width - ImageLeft : ImageWidth;
+
+                    var pWrite    = &pOutput[ row + ImageLeft ];
+                    var pRow      = pWrite;
+                    var pRowEnd   = pWrite + ImageWidth;
+                    var pImageEnd = pWrite + safeWidth;
 
                     // setup codes
 
@@ -575,36 +578,45 @@ namespace MG.GIF
 
                         if( bitsAvailable >= codeSize )
                         {
+                            // we had enough bits in the shift register so shunt it down
                             bitsAvailable -= codeSize;
                             shiftRegister >>= codeSize;
                         }
                         else
                         {
-                            // reload shift register
+                            // not enough bits in register, so get more
 
                             // if start of new block
+
                             if( bytesAvailable <= 0 )
                             {
                                 // read blocksize
+
                                 var pBlock = &pData[ D++ ];
                                 bytesAvailable = *pBlock++;
                                 D += bytesAvailable;
 
                                 // exit if end of stream
+
                                 if( bytesAvailable == 0 )
                                 {
                                     return;
                                 }
 
-                                pCurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0;
+                                // copy blocks into buffer
+
+                                pCurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
                                 Buffer.MemoryCopy( pBlock, pCurBlock, 256, bytesAvailable );
                                 pD = pCurBlock;
                             }
 
+                            // load shift register
 
                             shiftRegister = *pD++;
                             int newBits = bytesAvailable >= 4 ? 32 : bytesAvailable * 8;
                             bytesAvailable -= 4;
+
+                            // read remaining bits
 
                             if( bitsAvailable > 0 )
                             {
@@ -668,43 +680,47 @@ namespace MG.GIF
 
                         var codeLength = *pCodePos++;
                         var newCode    = *pCodePos;
-                        var end        = pCodePos + codeLength;
+                        var pEnd       = pCodePos + codeLength;
 
                         do
                         {
                             var code = *pCodePos++;
 
-                            if( code != TransparentIndex && col < Width )
+                            if( code != TransparentIndex && pWrite < pImageEnd )
                             {
-                                pOutput[ row + col ] = pColourTable[ code ];
+                                *pWrite = pColourTable[ code ];
                             }
 
-                            if( ++col == rightEdge )
+                            if( ++pWrite == pRowEnd )
                             {
-                                col = ImageLeft;
-                                row -= Width;
+                                pRow -= Width;
+                                pWrite    = pRow;
+                                pRowEnd   = pRow + ImageWidth;
+                                pImageEnd = pRow + safeWidth;
 
-                                if( row < 0 )
+                                if( pWrite < pOutput )
                                 {
                                     goto Exit;
                                 }
                             }
                         }
-                        while( pCodePos < end );
+                        while( pCodePos < pEnd );
 
                         if( plusOne )
                         {
-                            if( newCode != TransparentIndex && col < Width )
+                            if( newCode != TransparentIndex && pWrite < pImageEnd )
                             {
-                                pOutput[ row + col ] = pColourTable[ newCode ];
+                                *pWrite = pColourTable[ newCode ];
                             }
 
-                            if( ++col == rightEdge )
+                            if( ++pWrite == pRowEnd )
                             {
-                                col = ImageLeft;
-                                row -= Width;
+                                pRow -= Width;
+                                pWrite    = pRow;
+                                pRowEnd   = pRow + ImageWidth;
+                                pImageEnd = pRow + safeWidth;
 
-                                if( row < 0 )
+                                if( pWrite < pOutput )
                                 {
                                     goto Exit;
                                 }
@@ -782,8 +798,9 @@ namespace MG.GIF
         }
 
 #else
-        int[]    codeIndex   = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-        ushort[] codes = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+
+        int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
+        ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
 
         private Color32[] DecompressLZW()
         {

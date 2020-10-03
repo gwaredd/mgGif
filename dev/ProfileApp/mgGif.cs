@@ -4,7 +4,6 @@ using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Windows.Media;
 
 namespace MG.GIF
 {
@@ -511,11 +510,6 @@ namespace MG.GIF
             GC.SuppressFinalize( this );
         }
 
-        // TODO: rejig right margin logic to use incremental writes
-        // TODO: fast path if copying full image
-        // TODO: forward write with reversal of rows after the fact?
-        // TODO: batching code extraction
-
         private void DecompressLZW()
         {
             var pCodeBufferEnd = pCodes + CodesLength;
@@ -524,7 +518,7 @@ namespace MG.GIF
             {
                 fixed( Color32* pOutput = Output, pColourTable = ActiveColourTable )
                 {
-                    var row  = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
+                    var row       = ( Height - ImageTop - 1 ) * Width; // start at end of array as we are reversing the row order
                     var safeWidth = ImageLeft + ImageWidth > Width ? Width - ImageLeft : ImageWidth;
 
                     var pWrite    = &pOutput[ row + ImageLeft ];
@@ -549,8 +543,8 @@ namespace MG.GIF
 
                     // initialise buffers
 
-                    var numCodes = maximumCodeSize + 2;
-                    ushort* pCodesEnd = pCodes;
+                    var numCodes  = maximumCodeSize + 2;
+                    var pCodesEnd = pCodes;
 
                     for( ushort i = 0; i < numCodes; i++ )
                     {
@@ -561,14 +555,14 @@ namespace MG.GIF
 
                     // LZW decode loop
 
-                    uint previousCode   = NoCode; // last code processed
+                    uint previousCode   = NoCode;   // last code processed
                     uint mask           = (uint) ( nextSize - 1 ); // mask out code bits
-                    uint shiftRegister  = 0; // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+                    uint shiftRegister  = 0;        // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
 
-                    int  bitsAvailable  = 0; // number of bits available to read in the shift register
-                    int  bytesAvailable = 0; // number of bytes left in current block
+                    int  bitsAvailable  = 0;        // number of bits available to read in the shift register
+                    int  bytesAvailable = 0;        // number of bytes left in current block
 
-                    uint* pD = pCurBlock;
+                    uint* pD = pCurBlock;           // pointer to next bits in current block
 
                     while( true )
                     {
@@ -603,7 +597,7 @@ namespace MG.GIF
                                     return;
                                 }
 
-                                // copy blocks into buffer
+                                // copy block into buffer
 
                                 pCurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
                                 Buffer.MemoryCopy( pBlock, pCurBlock, 256, bytesAvailable );
@@ -635,9 +629,6 @@ namespace MG.GIF
 
                         // process code
 
-                        bool plusOne = false;
-                        ushort* pCodePos = null;
-
                         if( curCode == clearCode )
                         {
                             // reset codes
@@ -659,7 +650,11 @@ namespace MG.GIF
                             // stop
                             break;
                         }
-                        else if( curCode < numCodes )
+
+                        bool plusOne = false;
+                        ushort* pCodePos = null;
+
+                        if( curCode < numCodes )
                         {
                             // write existing code
                             pCodePos = pIndicies[ curCode ];

@@ -202,7 +202,7 @@ namespace MG.GIF
 
             while( img != null )
             {
-                images.Add( img );
+                images.Add( (Image) img.Clone() );
                 img = decoder.NextImage();
             }
 

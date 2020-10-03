@@ -1,4 +1,4 @@
-// #define mgGIF_UNSAFE
+#define mgGIF_UNSAFE
 
 using UnityEngine;
 using System;
@@ -710,7 +710,8 @@ namespace MG.GIF
 
                                 if( pWrite < pOutput )
                                 {
-                                    goto Exit;
+                                    SkipBlocks();
+                                    return;
                                 }
                             }
                         }
@@ -732,7 +733,7 @@ namespace MG.GIF
 
                                 if( pWrite < pOutput )
                                 {
-                                    goto Exit;
+                                    break;
                                 }
                             }
                         }
@@ -798,8 +799,6 @@ namespace MG.GIF
                         // remember last code processed
                         previousCode = curCode;
                     }
-
-                Exit:
 
                     // consume any remaining blocks
                     SkipBlocks();
@@ -927,9 +926,6 @@ namespace MG.GIF
 
                 // process code
 
-                bool plusOne = false;
-                int  codePos = 0;
-
                 if( curCode == clearCode )
                 {
                     // reset codes
@@ -951,7 +947,11 @@ namespace MG.GIF
                     // stop
                     break;
                 }
-                else if( curCode < numCodes )
+
+                bool plusOne = false;
+                int  codePos = 0;
+
+                if( curCode < numCodes )
                 {
                     // write existing code
                     codePos = Indices[ curCode ];
@@ -989,7 +989,8 @@ namespace MG.GIF
 
                         if( row < 0 )
                         {
-                            goto Exit;
+                            SkipBlocks();
+                            return;
                         }
                     }
                 }
@@ -1008,7 +1009,7 @@ namespace MG.GIF
 
                         if( row < 0 )
                         {
-                            goto Exit;
+                            break;
                         }
                     }
                 }
@@ -1060,9 +1061,7 @@ namespace MG.GIF
                 previousCode = curCode;
             }
 
-        Exit:
-
-            // consume any remaining blocks
+            // skip any remaining blocks
             SkipBlocks();
         }
 #endif // mgGIF_UNSAFE

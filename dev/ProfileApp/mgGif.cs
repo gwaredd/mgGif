@@ -457,7 +457,7 @@ namespace MG.GIF
 
 #if mgGIF_UNSAFE
 
-        const int MaxCodes = 4098;
+        const int MaxCodes = 4096;
 
         bool     Disposed    = false;
         int      CodesLength = 0;
@@ -670,7 +670,7 @@ namespace MG.GIF
                         var newCode    = *pCodePos;
                         var end        = pCodePos + codeLength;
 
-                        while( pCodePos < end )
+                        do
                         {
                             var code = *pCodePos++;
 
@@ -690,6 +690,7 @@ namespace MG.GIF
                                 }
                             }
                         }
+                        while( pCodePos < end );
 
                         if( plusOne )
                         {

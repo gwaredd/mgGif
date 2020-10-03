@@ -1,5 +1,6 @@
 _tmp
 tools
+builds
 *.csproj
 *.user
 bin

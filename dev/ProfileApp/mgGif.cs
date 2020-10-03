@@ -884,7 +884,7 @@ namespace MG.GIF
 
                     // if start of new block
 
-                    if( bytesAvailable == 0 )
+                    if( bytesAvailable <= 0 )
                     {
                         // read blocksize
                         bytesAvailable = Input[ D++ ];
@@ -895,37 +895,20 @@ namespace MG.GIF
                             return;
                         }
 
-/*                        CurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
+                        // read block
+                        CurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
                         Buffer.BlockCopy( Input, D, CurBlock, 0, bytesAvailable );
                         blockPos = 0;
-*/                    }
+                        D += bytesAvailable;
+                    }
 
+                    // load shift register
 
-                    int newBits = 32;
+                    shiftRegister = CurBlock[ blockPos++ ];
+                    int newBits = bytesAvailable >= 4 ? 32 : bytesAvailable * 8;
+                    bytesAvailable -= 4;
 
-                    if( bytesAvailable >= 4 )
-                    {
-                        shiftRegister = (uint) ( Input[ D++ ] | Input[ D++ ] << 8 | Input[ D++ ] << 16 | Input[ D++ ] << 24 );
-                        bytesAvailable -= 4;
-                    }
-                    else if( bytesAvailable == 3 )
-                    {
-                        shiftRegister = (uint) ( Input[ D++ ] | Input[ D++ ] << 8 | Input[ D++ ] << 16 );
-                        bytesAvailable = 0;
-                        newBits = 24;
-                    }
-                    else if( bytesAvailable == 2 )
-                    {
-                        shiftRegister = (uint) ( Input[ D++ ] | Input[ D++ ] << 8 );
-                        bytesAvailable = 0;
-                        newBits = 16;
-                    }
-                    else
-                    {
-                        shiftRegister = Input[ D++ ];
-                        bytesAvailable = 0;
-                        newBits = 8;
-                    }
+                    // read remaining bits
 
                     if( bitsAvailable > 0 )
                     {
@@ -1078,9 +1061,6 @@ namespace MG.GIF
             }
 
         Exit:
-
-            // skip any remaining bytes
-            D += bytesAvailable;
 
             // consume any remaining blocks
             SkipBlocks();

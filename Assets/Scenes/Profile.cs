@@ -3,9 +3,12 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Profiling;
+using UnityEngine.UI;
 
 public class Profile : MonoBehaviour
 {
+    public Text Text;
+
     private int      mCount;
     private long     mSum;
     private long     mSumSquares;
@@ -28,8 +31,6 @@ public class Profile : MonoBehaviour
 
     void Run( int sample )
     {
-        Profiler.BeginSample( $"Sample {sample}" );
-
         var decoder = new MG.GIF.Decoder();
 
         var sw = new Stopwatch();
@@ -58,6 +59,6 @@ public class Profile : MonoBehaviour
 
         UnityEngine.Debug.Log( $"[{sample:00}]: av <color=yellow>{average:0.0}</color>ms, sd <color=yellow>{Mathf.Sqrt( variance ):0.0}</color> - {sw.ElapsedMilliseconds}ms" );
 
-        Profiler.EndSample();
+        Text.text = $"[{sample:00}] {average:0.0}";
     }
 }

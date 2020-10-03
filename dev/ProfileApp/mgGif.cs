@@ -747,23 +747,8 @@ namespace MG.GIF
 
                             // copy previous code sequence
 
-                            //if( codeLength < 16 )
-                            {
-                                var stop = pCodesEnd + codeLength;
-
-                                do
-                                {
-                                    *pCodesEnd++ = *pCodePos++;
-                                }
-                                while( pCodesEnd < stop );
-                            }
-                            //else
-                            //{
-                            //    Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof(ushort), codeLength * sizeof( ushort ) );
-                            //    pCodesEnd += codeLength;
-                            //}
-
-
+                            Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof( ushort ), codeLength * sizeof( ushort ) );
+                            pCodesEnd += codeLength;
 
                             // append new code
 

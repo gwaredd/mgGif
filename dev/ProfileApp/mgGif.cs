@@ -457,18 +457,28 @@ namespace MG.GIF
 
 #if mgGIF_UNSAFE
 
-        readonly ushort*[] pIndicies  = new ushort*[ 4098 ];
+        const int MaxCodes = 4098;
 
-        bool    Disposed    = false;
-        int     CodesLength = 0;
-        IntPtr  CodesHandle = IntPtr.Zero;
-        IntPtr  CurBlock    = IntPtr.Zero;
+        bool     Disposed    = false;
+        int      CodesLength = 0;
+        IntPtr   CodesHandle = IntPtr.Zero;
+        IntPtr   CurBlock    = IntPtr.Zero;
+        IntPtr   Indices     = IntPtr.Zero;
+        uint*    pCurBlock   = null;
+        ushort*  pCodes      = null;
+        ushort** pIndicies   = null;
+
 
         public Decoder()
         {
             CodesLength = 128 * 1024;
             CodesHandle = Marshal.AllocHGlobal( CodesLength * sizeof( ushort ) );
             CurBlock    = Marshal.AllocHGlobal( 64 * sizeof( uint ) );
+            Indices     = Marshal.AllocHGlobal( MaxCodes * sizeof( ushort* ) );
+
+            pCurBlock = (uint*) CurBlock.ToPointer();
+            pCodes    = (ushort*) CodesHandle.ToPointer();
+            pIndicies = (ushort**) Indices.ToPointer();
         }
 
         ~Decoder()
@@ -492,10 +502,8 @@ namespace MG.GIF
 
             Marshal.FreeHGlobal( CodesHandle );
             Marshal.FreeHGlobal( CurBlock );
-
-            CodesHandle = IntPtr.Zero;
-            CurBlock    = IntPtr.Zero;
-
+            Marshal.FreeHGlobal( Indices );
+            
             Disposed    = true;
         }
 
@@ -505,15 +513,12 @@ namespace MG.GIF
             GC.SuppressFinalize( this );
         }
 
-        // TODO: unroll copy code loop
         // TODO: fast path if copying full image
-        // TODO: reverse rows after the fact? for fast write
+        // TODO: forward write with reversal of rows after the fact?
         // TODO: batching code extraction
 
         private void DecompressLZW()
         {
-            var pCurBlock      = (uint*) CurBlock.ToPointer();
-            var pCodes         = (ushort*) CodesHandle.ToPointer();
             var pCodeBufferEnd = pCodes + CodesLength;
 
             fixed( byte* pData = Input )
@@ -707,7 +712,7 @@ namespace MG.GIF
 
                         // create new code
 
-                        if( previousCode != NoCode && numCodes != pIndicies.Length )
+                        if( previousCode != NoCode && numCodes != MaxCodes )
                         {
                             // get previous code from buffer
 

@@ -38,7 +38,14 @@ public class Profile : MonoBehaviour
 
         foreach( var file in mFiles )
         {
-            decoder.Load( file ).GetImages();
+            decoder.Load( file );
+
+            var img = decoder.NextImage();
+
+            while( img != null )
+            {
+                img = decoder.NextImage();
+            }
         }
 
         sw.Stop();

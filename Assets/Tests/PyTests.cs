@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using System;
+//using System.Windows.Media;
 
 // TODO: other tests
 //  http://www.schaik.com/pngsuite/
@@ -73,7 +74,7 @@ namespace MG.GIF
                 }
                 else if( kv.Length != 2 )
                 {
-                    Debug.LogWarning( $"Unknown config - {line}" );
+                    TestContext.WriteLine( $"Unknown config - {line}" );
                 }
                 else
                 {
@@ -87,7 +88,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // compare output against reference image
 
-        private void ValidatePixels( Image[] gif, Image frame, string referenceFile )
+        private void ValidatePixels( List<Image> images, Image frame, string referenceFile )
         {
             if( frame == null && referenceFile == "transparent-dot.rgba" )
             {
@@ -117,8 +118,8 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            var width  = gif[ 0 ].Width;
-            var height = gif[ 0 ].Height;
+            var width  = images[ 0 ].Width;
+            var height = images[ 0 ].Height;
 
             for( var y = 0; y < height; y++ )
             {
@@ -129,7 +130,10 @@ namespace MG.GIF
                     var i = y * width + x;
                     var j = ( height - y - 1 ) * width + x;
 
-                    Assert.AreEqual( colours[i], frame.RawImage[j] );
+                    Assert.AreEqual( colours[ i ].r, frame.RawImage[ j ].r );
+                    Assert.AreEqual( colours[ i ].g, frame.RawImage[ j ].g );
+                    Assert.AreEqual( colours[ i ].b, frame.RawImage[ j ].b );
+                    Assert.AreEqual( colours[ i ].a, frame.RawImage[ j ].a );
                 }
             }
         }
@@ -137,7 +141,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // check frame against config values
 
-        private void ValidateFrame( int frameIndex, string frameName, Image[] images )
+        private void ValidateFrame( int frameIndex, string frameName, List<Image> images )
         {
             var handle = $"[{frameName}].";
 
@@ -169,7 +173,7 @@ namespace MG.GIF
                 else if( kv[1] == "delay" )
                 {
                     Assert.IsNotNull( images );
-                    Assert.IsTrue( frameIndex < images.Length );
+                    Assert.IsTrue( frameIndex < images.Count );
 
                     var expected = Get(key);
 
@@ -178,7 +182,7 @@ namespace MG.GIF
                 }
                 else
                 {
-                    Debug.LogError( $"Unknown frame attribute {kv[1]}" );
+                    TestContext.WriteLine( $"Unknown frame attribute {kv[1]}" );
                 }
             }
         }
@@ -191,8 +195,16 @@ namespace MG.GIF
             // read input gif
 
             var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var decoder = new Decoder().Load( bytes );
-            var gif     = decoder.GetImages();
+            var decoder = new Decoder( bytes );
+
+            var images = new List<Image>();
+            var img = decoder.NextImage();
+
+            while( img != null )
+            {
+                images.Add( (Image) img.Clone() );
+                img = decoder.NextImage();
+            }
 
             // compare results
 
@@ -209,15 +221,12 @@ namespace MG.GIF
                         // test gif for input
                         break;
 
-                    case "comment":       // plain text extension
-                    case "xmp-data":      // XMP data extension
-                    case "color-profile": // ICC colour profile extension
-                        // ignore
-                        break;
-
-                                            // Netscape or Animation extension
+                    case "comment":         // plain text extension
+                    case "xmp-data":        // XMP data extension
+                    case "color-profile":   // ICC colour profile extension
                     case "buffer-size":     // size of buffer before playing
                     case "force-animation": // default to true
+                    case "loop-count":
                         // ignore
                         break;
 
@@ -233,30 +242,25 @@ namespace MG.GIF
                         Assert.AreEqual( Get( "height" ), decoder.Height.ToString() );
                         break;
 
-                    case "loop-count":
-
-                        //var loop_count = Get( "loop-count" );
-
-                        //if( loop_count == "infinite" )
-                        //{
-                        //    Assert.AreEqual( 0xFFFF.ToString(), gif.LoopCount.ToString() );
-                        //}
-                        //else
-                        //{
-                        //    Assert.AreEqual( loop_count, gif.LoopCount.ToString() );
-                        //}
-
-                        break;
-
                     case "background":
 
-                        Color col;
-                        var v = Get( "background" );
+                        var v   = Get( "background" );
 
-                        if( ColorUtility.TryParseHtmlString( v, out col ) )
+                        //var col = (Color) ColorConverter.ConvertFromString( v );
+                        //Assert.AreEqual( col.R, decoder.BackgroundColour.r );
+                        //Assert.AreEqual( col.G, decoder.BackgroundColour.g );
+                        //Assert.AreEqual( col.B, decoder.BackgroundColour.b );
+                        //Assert.AreEqual( col.A, decoder.BackgroundColour.a );
+
+                        Color c;
+
+                        if( ColorUtility.TryParseHtmlString( v, out c ) )
                         {
-                            Color32 c = col;
-                            Assert.AreEqual( c, decoder.BackgroundColour );
+                            Color32 col = c;
+                            Assert.AreEqual( col.r, decoder.BackgroundColour.r );
+                            Assert.AreEqual( col.g, decoder.BackgroundColour.g );
+                            Assert.AreEqual( col.b, decoder.BackgroundColour.b );
+                            Assert.AreEqual( col.a, decoder.BackgroundColour.a );
                         }
                         else
                         {
@@ -271,13 +275,13 @@ namespace MG.GIF
 
                         for( int i = 0; i < frames.Length; i++ )
                         {
-                            ValidateFrame( i, frames[i], gif );
+                            ValidateFrame( i, frames[i], images );
                         }
 
                         break;
 
                     default:
-                        Debug.LogWarning( $"Unhandled config {key}" );
+                        TestContext.WriteLine( $"Unhandled config {key}" );
                         break;
                 }
             }
@@ -288,7 +292,7 @@ namespace MG.GIF
 
     public class PyTests
     {
-        private string DirData = @"Assets\Tests\Data~";
+        private string DirData = @"Assets/Tests/Data~";
 
         [Test]
         public void CanReadTestData()
@@ -406,5 +410,49 @@ namespace MG.GIF
         [Test] public void Test_zero_height()                               { ValidateConfig( "zero-height" ); }
         [Test] public void Test_zero_size()                                 { ValidateConfig( "zero-size" ); }
         [Test] public void Test_zero_width()                                { ValidateConfig( "zero-width" ); }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+public static class MgGifImageArrayExtension
+{
+    public static int GetNumFrames( this List<MG.GIF.Image> images )
+    {
+        int count = 0;
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static MG.GIF.Image GetFrame( this List<MG.GIF.Image> images, int index )
+    {
+        if( images.Count == 0 )
+        {
+            return null;
+        }
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                if( index == 0 )
+                {
+                    return img;
+                }
+
+                index--;
+            }
+        }
+
+        return images[ images.Count - 1 ];
     }
 }

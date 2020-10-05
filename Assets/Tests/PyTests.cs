@@ -292,7 +292,7 @@ namespace MG.GIF
 
     public class PyTests
     {
-        private string DirData = @"Assets/Tests/Data~";
+        private string DirData = Application.streamingAssetsPath + "/Data~";
 
         [Test]
         public void CanReadTestData()
@@ -301,6 +301,11 @@ namespace MG.GIF
             var files = d.GetFiles( "*.conf" );
 
             Assert.AreEqual( 81, files.Length );
+        }
+
+        public void ForceFail()
+        {
+            Assert.Fail( "Test failture" );
         }
 
         [Test]

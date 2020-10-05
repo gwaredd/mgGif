@@ -2,12 +2,13 @@
 using System.IO;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Profiling;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class Profile : MonoBehaviour
 {
     public Text Text;
+    public Text Version;
 
     private int      mCount;
     private long     mSum;
@@ -16,7 +17,14 @@ public class Profile : MonoBehaviour
 
     void Start()
     {
-        mCount      = 0;
+#if mgGIF_UNSAFE
+        Version.text = "UNSAFE";
+#else
+        Version.text = "SAFE";
+#endif
+
+
+        mCount = 0;
         mSum        = 0;
         mSumSquares = 0;
 
@@ -60,5 +68,10 @@ public class Profile : MonoBehaviour
         UnityEngine.Debug.Log( $"[{sample:00}]: av <color=yellow>{average:0.0}</color>ms, sd <color=yellow>{Mathf.Sqrt( variance ):0.0}</color> - {sw.ElapsedMilliseconds}ms" );
 
         Text.text = $"[{sample:00}] {average:0.0}";
+    }
+
+    public void OnNext()
+    {
+        SceneManager.LoadScene( "Tests" );
     }
 }

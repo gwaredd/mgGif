@@ -1,12 +1,9 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using MG.GIF;
-using System;
-using System.Linq;
-using NUnit.Framework.Interfaces;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
+using UnityEngine.SceneManagement;
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -97,6 +94,11 @@ public class TestRunner : MonoBehaviour
         {
             Title.text = "<color=green>PASS</color>";
         }
+    }
+
+    public void OnNext()
+    {
+        SceneManager.LoadScene( "Profile" );
     }
 }
 

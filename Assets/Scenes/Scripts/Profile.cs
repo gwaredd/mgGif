@@ -17,12 +17,7 @@ public class Profile : MonoBehaviour
 
     void Start()
     {
-#if mgGIF_UNSAFE
-        Version.text = "UNSAFE";
-#else
-        Version.text = "SAFE";
-#endif
-
+        Version.text = MG.GIF.Decoder.Ident();
 
         mCount = 0;
         mSum        = 0;

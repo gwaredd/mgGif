@@ -1062,6 +1062,28 @@ namespace MG.GIF
             SkipBlocks();
         }
 #endif // mgGIF_UNSAFE
+
+        public static string Ident()
+        {
+            var v = "1.1";
+            var e = BitConverter.IsLittleEndian ? "L" : "B";
+#if ENABLE_IL2CPP
+            var b = "N";
+#else
+            var b = "M";
+#endif
+#if mgGIF_UNSAFE
+            var s = "U";
+#else
+            var s = "S";
+#endif
+#if NET_4_6
+            var n = "4.x";
+#else
+            var n = "2.0";
+#endif
+            return $"{v} {e}{s}{b} {n}";
+        }
     }
 }
 

@@ -1,0 +1,25 @@
+Windows
+
+Editor
+
+Safe    290     92%
+Unsafe  315
+
+
+Mono
+
+Safe    142
+Unsafe  119     83%
+
+IL2CPP
+
+Safe    97
+Unsafe  79      81%
+
+
+Android
+
+Safe    180
+Unsafe  111     62%
+
+

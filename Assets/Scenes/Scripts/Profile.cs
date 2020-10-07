@@ -1,7 +1,10 @@
-﻿using System.Diagnostics;
+﻿using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -19,16 +22,50 @@ public class Profile : MonoBehaviour
     {
         Version.text = MG.GIF.Decoder.Ident();
 
-        mCount = 0;
+        mCount      = 0;
         mSum        = 0;
         mSumSquares = 0;
 
-        var files = Directory.GetFiles( Application.streamingAssetsPath, "*.gif" );
-        mFiles = (from file in files select File.ReadAllBytes( file )).ToArray();
+        #if UNITY_ANDROID
+            StartCoroutine( ReadFiles() );
+        #else
+            var files = Directory.GetFiles( Application.streamingAssetsPath, "*.gif" );
+            mFiles = (from file in files select File.ReadAllBytes( file )).ToArray();
+        #endif
     }
+
+#if UNITY_ANDROID
+
+    IEnumerator ReadFiles()
+    {
+        mFiles = new byte[1][];
+
+        var files = new string[]{ "butterfly.gif", "cat.gif", "jellyfish.gif" };
+
+        var data = new List<byte[]>();
+
+        foreach( var filename in files )
+        {
+            var path = Application.streamingAssetsPath + "/" + filename;
+
+            using( var req = UnityWebRequest.Get( path ) )
+            {
+                yield return req.SendWebRequest();
+                data.Add( req.downloadHandler.data );
+            }
+        }
+
+        mFiles = data.ToArray();
+    }
+#endif
 
     void Update()
     {
+        if( mFiles.Length != 3 )
+        {
+            return;
+        }
+
         Run( ++mCount );
     }
 

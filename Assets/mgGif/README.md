@@ -33,7 +33,7 @@ using( var decoder = new MG.GIF.Decoder( data ) )
 }
 ```
 
-For speed, the decoder will reuse the memory between each `NextImage()` call. If you need to keep the image data then you must `Clone()` it.
-
 See [Assets\Scenes\AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/master/Assets/Scenes/AnimatedTextures.cs) for an example
+
+**NB:** For speed the decoder will reuse the buffer memory between each `NextImage()` call. If you need to keep the raw image data then ensure you `Clone()` it.
 

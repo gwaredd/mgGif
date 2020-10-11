@@ -12,6 +12,7 @@ Temp
 *.sln
 UserSettings
 _ref
+git_*
 
 !dev/ProfileApp/*.sln
 !dev/ProfileApp/*.csproj

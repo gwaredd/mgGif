@@ -35,5 +35,6 @@ using( var decoder = new MG.GIF.Decoder( data ) )
 
 See [Assets\Scenes\AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/master/Assets/Scenes/AnimatedTextures.cs) for an example
 
-**NB:** For speed the decoder will reuse the buffer memory between each `NextImage()` call. If you need to keep the raw image data then ensure you `Clone()` it.
+**NB:** For speed the decoder will reuse the buffer memory between each `NextImage()` call. If you need to keep the raw image data then ensure you `Clone()` it first.
 
+For an additional performance improvement, uncomment `mgGIF_UNSAFE` at the top of the file and allow unsafe code compilation in the assembly.

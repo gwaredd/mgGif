@@ -66,7 +66,7 @@ namespace MG.GIF
         // GIF format enums
 
         [Flags]
-        private enum ImageFlag
+        enum ImageFlag
         {
             Interlaced        = 0x40,
             ColourTable       = 0x80,
@@ -74,14 +74,14 @@ namespace MG.GIF
             BitDepthMask      = 0x70,
         }
 
-        private enum Block
+        enum Block
         {
             Image             = 0x2C,
             Extension         = 0x21,
             End               = 0x3B
         }
 
-        private enum Extension
+        enum Extension
         {
             GraphicControl    = 0xF9,
             Comments          = 0xFE,
@@ -89,7 +89,7 @@ namespace MG.GIF
             ApplicationData   = 0xFF
         }
 
-        private enum Disposal
+        enum Disposal
         {
             None              = 0x00,
             DoNotDispose      = 0x04,
@@ -98,7 +98,7 @@ namespace MG.GIF
         }
 
         [Flags]
-        private enum ControlFlags
+        enum ControlFlags
         {
             HasTransparency   = 0x01,
             DisposalMask      = 0x0C
@@ -107,30 +107,30 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        const uint          NoCode         = 0xFFFF;
-        const ushort        NoTransparency = 0xFFFF;
+        const uint   NoCode         = 0xFFFF;
+        const ushort NoTransparency = 0xFFFF;
 
         // input stream to decode
-        byte[]              Input;
-        int                 D;
+        byte[]      Input;
+        int         D;
 
         // colour table
-        private Color32[]   GlobalColourTable;
-        private Color32[]   LocalColourTable;
-        private Color32[]   ActiveColourTable;
-        private ushort      TransparentIndex;
+        Color32[]   GlobalColourTable;
+        Color32[]   LocalColourTable;
+        Color32[]   ActiveColourTable;
+        ushort      TransparentIndex;
 
         // current image
-        private Image       Image = new Image();
-        private ushort      ImageLeft;
-        private ushort      ImageTop;
-        private ushort      ImageWidth;
-        private ushort      ImageHeight;
+        Image       Image = new Image();
+        ushort      ImageLeft;
+        ushort      ImageTop;
+        ushort      ImageWidth;
+        ushort      ImageHeight;
 
-        private Color32[]   Output;
-        private Color32[]   PreviousImage;
+        Color32[]   Output;
+        Color32[]   PreviousImage;
 
-        readonly int[]      Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+        readonly int[] Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         //------------------------------------------------------------------------------
         // ctor
@@ -175,7 +175,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected void ReadHeader()
+        void ReadHeader()
         {
             if( Input == null || Input.Length <= 12 )
             {
@@ -276,7 +276,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private Color32[] ReadColourTable( Color32[] colourTable, ImageFlag flags )
+        Color32[] ReadColourTable( Color32[] colourTable, ImageFlag flags )
         {
             var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
 
@@ -295,7 +295,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private void SkipBlocks()
+        void SkipBlocks()
         {
             var blockSize = Input[ D++ ];
 
@@ -308,7 +308,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        private void ReadControlBlock()
+        void ReadControlBlock()
         {
             // read block
 
@@ -362,7 +362,7 @@ namespace MG.GIF
 
         //------------------------------------------------------------------------------
 
-        protected Image ReadImageBlock()
+        Image ReadImageBlock()
         {
             // read image block header
 
@@ -416,7 +416,7 @@ namespace MG.GIF
         //------------------------------------------------------------------------------
         // decode interlaced images
 
-        protected void Deinterlace()
+        void Deinterlace()
         {
             var numRows  = Output.Length / Width;
             var writePos = Output.Length - Width; // NB: work backwards due to Y-coord flip
@@ -518,7 +518,7 @@ namespace MG.GIF
             GC.SuppressFinalize( this );
         }
 
-        private void DecompressLZW()
+        void DecompressLZW()
         {
             var pCodeBufferEnd = pCodes + CodesLength;
 
@@ -816,7 +816,7 @@ namespace MG.GIF
         ushort[] Codes    = new ushort[ 128 * 1024 ];
         uint[]   CurBlock = new uint[ 64 ];
 
-        private void DecompressLZW()
+        void DecompressLZW()
         {
             // output write position
 
@@ -1067,21 +1067,25 @@ namespace MG.GIF
         {
             var v = "1.1";
             var e = BitConverter.IsLittleEndian ? "L" : "B";
+
 #if ENABLE_IL2CPP
             var b = "N";
 #else
             var b = "M";
 #endif
+
 #if mgGIF_UNSAFE
             var s = "U";
 #else
             var s = "S";
 #endif
+
 #if NET_4_6
             var n = "4.x";
 #else
             var n = "2.0";
 #endif
+
             return $"{v} {e}{s}{b} {n}";
         }
     }

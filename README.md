@@ -38,3 +38,15 @@ See [Assets\Scenes\AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/ma
 **NB:** For speed the decoder will reuse the buffer memory between each `NextImage()` call. If you need to keep the raw image data then ensure you `Clone()` it first.
 
 For an additional performance improvement, uncomment `mgGIF_UNSAFE` at the top of the file and allow unsafe code compilation in the assembly.
+
+## Benchmarks
+
+Benchmarks of the time to decode three test animations using different libraries.
+
+| Library               | Editor    | Mono      | IL2CPP    |
+|-----------------------|-----------|----------|------------|
+| UniGif                | 7321 ms   | 3790 ms  | 3178 ms    |
+| Unity-GifDecoder      | 365  ms   | 123  ms  | 88   ms    |
+| mgGif                 | 247  ms   | 112  ms  | 80   ms    |
+| mgGif (Unsafe Mode)   | 280  ms   | 106  ms  | 70   ms    |
+

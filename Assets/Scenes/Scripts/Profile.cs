@@ -1,8 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
@@ -26,15 +24,8 @@ public class Profile : MonoBehaviour
         mSum        = 0;
         mSumSquares = 0;
 
-        #if UNITY_ANDROID
-            StartCoroutine( ReadFiles() );
-        #else
-            var files = Directory.GetFiles( Application.streamingAssetsPath, "*.gif" );
-            mFiles = (from file in files select File.ReadAllBytes( file )).ToArray();
-        #endif
+        StartCoroutine( ReadFiles() );
     }
-
-#if UNITY_ANDROID
 
     IEnumerator ReadFiles()
     {
@@ -57,7 +48,6 @@ public class Profile : MonoBehaviour
 
         mFiles = data.ToArray();
     }
-#endif
 
     void Update()
     {

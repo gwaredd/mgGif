@@ -76,6 +76,8 @@ public class TestRunner : MonoBehaviour
         UpdateCount();
     }
 
+    //------------------------------------------------------------------------------
+
     void UpdateCount()
     {
         Count.text = $"<size=32><color=green>{mPassed}</color> / <color=red>{mFailed}</color> / {mSkipped}</size> <color=white>{mTotal}</color>";
@@ -95,6 +97,8 @@ public class TestRunner : MonoBehaviour
             Title.text = "<color=green>PASS</color>";
         }
     }
+
+    //------------------------------------------------------------------------------
 
     public void OnNext()
     {

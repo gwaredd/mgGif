@@ -48,6 +48,8 @@ namespace ProfileApp
                 var variance = sumSquares / count - average * average;
 
                 Console.WriteLine( $"[{count:00}]: av {average:0.0}ms, sd {Math.Sqrt( variance ):0.0} - {sw.ElapsedMilliseconds}ms" );
+
+                break;
             }
         }
     }

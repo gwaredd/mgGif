@@ -1,7 +1,8 @@
 _tmp
 tools
+builds
 *.csproj
-*.csproj.user
+*.user
 bin
 obj
 Logs
@@ -10,6 +11,7 @@ Temp
 .vs
 *.sln
 UserSettings
+_ref
 
 !dev/ProfileApp/*.sln
 !dev/ProfileApp/*.csproj

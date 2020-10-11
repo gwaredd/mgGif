@@ -1,4 +1,5 @@
-﻿/**/
+﻿// mock the unity interface
+
 namespace UnityEngine
 {
     public struct Color32
@@ -42,4 +43,3 @@ namespace UnityEngine
         public void Apply() { }
     }
 }
-/**/

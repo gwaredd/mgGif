@@ -9,7 +9,7 @@ namespace ProfileApp
     {
         static void Main( string[] args )
         {
-            var dir       = @"C:\dev\mgGIF\Assets\StreamingAssets";
+            var dir       = @"..\..\..\..\Assets\StreamingAssets";
             var filenames = Directory.GetFiles( dir, "*.gif" );
             var filedata  = ( from file in filenames select File.ReadAllBytes( file ) ).ToArray();
 
@@ -27,7 +27,14 @@ namespace ProfileApp
 
                 foreach( var file in filedata )
                 {
-                    decoder.Load( file ).GetImages();
+                    decoder.Load( file );
+
+                    var img = decoder.NextImage();
+
+                    while( img != null )
+                    {
+                        img = decoder.NextImage();
+                    }
                 }
 
                 sw.Stop();
@@ -41,6 +48,8 @@ namespace ProfileApp
                 var variance = sumSquares / count - average * average;
 
                 Console.WriteLine( $"[{count:00}]: av {average:0.0}ms, sd {Math.Sqrt( variance ):0.0} - {sw.ElapsedMilliseconds}ms" );
+
+                break;
             }
         }
     }

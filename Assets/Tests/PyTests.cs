@@ -1,33 +1,49 @@
-﻿// test suite from https://github.com/robert-ancell/pygif
+﻿/*
+    Test data from
+        https://github.com/robert-ancell/pygif
+
+    LICENSE
+        LGPL v3.0
+        https://github.com/robert-ancell/pygif/blob/master/LICENSE
+*/
 
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using System;
-
-// TODO: other tests
-//  http://www.schaik.com/pngsuite/
-//  https://code.google.com/archive/p/imagetestsuite/downloads
-
+using UnityEngine.Networking;
+using System.Text;
 
 namespace MG.GIF
 {
     //////////////////////////////////////////////////////////////////////////////////
+    // Execute test config file
 
     public class TestConfig
     {
-        public string Dir;
-        public Dictionary<string,string> Config = new Dictionary<string, string>();
+        string mTestDirectory;
+        Dictionary<string,string> mConfig = new Dictionary<string, string>();
+
+
+        //--------------------------------------------------------------------------------
+
+        public int Count
+        {
+            get
+            {
+                return mConfig.Count;
+            }
+        }
 
         public bool Has( string key )
         {
-            return Config.ContainsKey( key );
+            return mConfig.ContainsKey( key );
         }
 
         public string Get( string key )
         {
-            return Config.ContainsKey( key ) ? Config[key] : null;
+            return mConfig.ContainsKey( key ) ? mConfig[key] : null;
         }
 
         //--------------------------------------------------------------------------------
@@ -35,16 +51,14 @@ namespace MG.GIF
 
         public TestConfig( string dir, string file )
         {
-            Dir = dir;
+            mTestDirectory = dir;
 
-            string line;
-            string section = "";
+            var section  = "";
+            var contents = Encoding.Default.GetString( ReadFile( $"{dir}\\{file}" ) );
 
-            var r = new StreamReader( $"{dir}\\{file}" );
-
-            while( ( line = r.ReadLine() ) != null )
+            foreach( var curLine in contents.Split( new char[] { '\r', '\n' } ) )
             {
-                line = line.Trim();
+                var line = curLine.Trim();
 
                 if( line.Length == 0 || line[0] == '#' )
                 {
@@ -69,25 +83,57 @@ namespace MG.GIF
 
                 if( kv.Length == 1 )
                 {
-                    Config[$"{section}{kv[0].Trim()}"] = "";
+                    mConfig[$"{section}{kv[0].Trim()}"] = "";
                 }
                 else if( kv.Length != 2 )
                 {
-                    Debug.LogWarning( $"Unknown config - {line}" );
+                    TestContext.WriteLine( $"Unknown config - {line}" );
                 }
                 else
                 {
-                    Config[$"{section}{kv[0].Trim()}"] = kv[1].Trim();
+                    mConfig[$"{section}{kv[0].Trim()}"] = kv[1].Trim();
                 }
             }
-
-            r.Close();
         }
+
+
+        //--------------------------------------------------------------------------------
+        // read file shim
+
+        byte[] ReadFile( string path )
+        {
+            return ReadFileWWW( path );
+        }
+
+        byte[] ReadFileDefault( string path )
+        {
+            return File.ReadAllBytes( path );
+        }
+
+        byte[] ReadFileWWW( string path )
+        {
+            using( var req = UnityWebRequest.Get( path ) )
+            {
+                var op = req.SendWebRequest();
+
+                while( !op.isDone )
+                {
+                }
+
+                if( req.isNetworkError || req.isHttpError )
+                {
+                    throw new Exception( req.error );
+                }
+
+                return req.downloadHandler.data;
+            }
+        }
+
 
         //--------------------------------------------------------------------------------
         // compare output against reference image
 
-        private void ValidatePixels( Image[] gif, Image frame, string referenceFile )
+        private void ValidatePixels( List<Image> images, Image frame, string referenceFile )
         {
             if( frame == null && referenceFile == "transparent-dot.rgba" )
             {
@@ -96,7 +142,7 @@ namespace MG.GIF
 
             // read reference file
 
-            var bytes = File.ReadAllBytes( $"{Dir}\\{referenceFile}" );
+            var bytes = ReadFile( $"{mTestDirectory}\\{referenceFile}" );
 
             Assert.IsTrue( bytes.Length % 4 == 0 );
 
@@ -117,8 +163,8 @@ namespace MG.GIF
             Assert.IsNotNull( frame );
             Assert.AreEqual( colours.Length, frame.RawImage.Length );
 
-            var width  = gif[ 0 ].Width;
-            var height = gif[ 0 ].Height;
+            var width  = images[ 0 ].Width;
+            var height = images[ 0 ].Height;
 
             for( var y = 0; y < height; y++ )
             {
@@ -129,7 +175,10 @@ namespace MG.GIF
                     var i = y * width + x;
                     var j = ( height - y - 1 ) * width + x;
 
-                    Assert.AreEqual( colours[i], frame.RawImage[j] );
+                    Assert.AreEqual( colours[ i ].r, frame.RawImage[ j ].r );
+                    Assert.AreEqual( colours[ i ].g, frame.RawImage[ j ].g );
+                    Assert.AreEqual( colours[ i ].b, frame.RawImage[ j ].b );
+                    Assert.AreEqual( colours[ i ].a, frame.RawImage[ j ].a );
                 }
             }
         }
@@ -137,7 +186,7 @@ namespace MG.GIF
         //--------------------------------------------------------------------------------
         // check frame against config values
 
-        private void ValidateFrame( int frameIndex, string frameName, Image[] images )
+        private void ValidateFrame( int frameIndex, string frameName, List<Image> images )
         {
             var handle = $"[{frameName}].";
 
@@ -153,7 +202,7 @@ namespace MG.GIF
             }
 
 
-            foreach( var key in Config.Keys )
+            foreach( var key in mConfig.Keys )
             {
                 if( !key.StartsWith( handle) )
                 {
@@ -169,7 +218,7 @@ namespace MG.GIF
                 else if( kv[1] == "delay" )
                 {
                     Assert.IsNotNull( images );
-                    Assert.IsTrue( frameIndex < images.Length );
+                    Assert.IsTrue( frameIndex < images.Count );
 
                     var expected = Get(key);
 
@@ -178,7 +227,7 @@ namespace MG.GIF
                 }
                 else
                 {
-                    Debug.LogError( $"Unknown frame attribute {kv[1]}" );
+                    TestContext.WriteLine( $"Unknown frame attribute {kv[1]}" );
                 }
             }
         }
@@ -190,13 +239,21 @@ namespace MG.GIF
         {
             // read input gif
 
-            var bytes   = File.ReadAllBytes( $"{Dir}\\{Get( "input" )}" );
-            var decoder = new Decoder().Load( bytes );
-            var gif     = decoder.GetImages();
+            var bytes   = ReadFile( $"{mTestDirectory}\\{Get( "input" )}" );
+            var decoder = new Decoder( bytes );
+
+            var images = new List<Image>();
+            var img = decoder.NextImage();
+
+            while( img != null )
+            {
+                images.Add( (Image) img.Clone() );
+                img = decoder.NextImage();
+            }
 
             // compare results
 
-            foreach( var key in Config.Keys )
+            foreach( var key in mConfig.Keys )
             {
                 if( key[0] == '[' )
                 {
@@ -209,15 +266,12 @@ namespace MG.GIF
                         // test gif for input
                         break;
 
-                    case "comment":       // plain text extension
-                    case "xmp-data":      // XMP data extension
-                    case "color-profile": // ICC colour profile extension
-                        // ignore
-                        break;
-
-                                            // Netscape or Animation extension
+                    case "comment":         // plain text extension
+                    case "xmp-data":        // XMP data extension
+                    case "color-profile":   // ICC colour profile extension
                     case "buffer-size":     // size of buffer before playing
                     case "force-animation": // default to true
+                    case "loop-count":
                         // ignore
                         break;
 
@@ -233,30 +287,25 @@ namespace MG.GIF
                         Assert.AreEqual( Get( "height" ), decoder.Height.ToString() );
                         break;
 
-                    case "loop-count":
-
-                        //var loop_count = Get( "loop-count" );
-
-                        //if( loop_count == "infinite" )
-                        //{
-                        //    Assert.AreEqual( 0xFFFF.ToString(), gif.LoopCount.ToString() );
-                        //}
-                        //else
-                        //{
-                        //    Assert.AreEqual( loop_count, gif.LoopCount.ToString() );
-                        //}
-
-                        break;
-
                     case "background":
 
-                        Color col;
-                        var v = Get( "background" );
+                        var v   = Get( "background" );
 
-                        if( ColorUtility.TryParseHtmlString( v, out col ) )
+                        //var col = (Color) ColorConverter.ConvertFromString( v );
+                        //Assert.AreEqual( col.R, decoder.BackgroundColour.r );
+                        //Assert.AreEqual( col.G, decoder.BackgroundColour.g );
+                        //Assert.AreEqual( col.B, decoder.BackgroundColour.b );
+                        //Assert.AreEqual( col.A, decoder.BackgroundColour.a );
+
+                        Color c;
+
+                        if( ColorUtility.TryParseHtmlString( v, out c ) )
                         {
-                            Color32 c = col;
-                            Assert.AreEqual( c, decoder.BackgroundColour );
+                            Color32 col = c;
+                            Assert.AreEqual( col.r, decoder.BackgroundColour.r );
+                            Assert.AreEqual( col.g, decoder.BackgroundColour.g );
+                            Assert.AreEqual( col.b, decoder.BackgroundColour.b );
+                            Assert.AreEqual( col.a, decoder.BackgroundColour.a );
                         }
                         else
                         {
@@ -271,24 +320,29 @@ namespace MG.GIF
 
                         for( int i = 0; i < frames.Length; i++ )
                         {
-                            ValidateFrame( i, frames[i], gif );
+                            ValidateFrame( i, frames[i], images );
                         }
 
                         break;
 
                     default:
-                        Debug.LogWarning( $"Unhandled config {key}" );
+                        TestContext.WriteLine( $"Unhandled config {key}" );
                         break;
                 }
             }
         }
     }
 
+
     //////////////////////////////////////////////////////////////////////////////////
+    // Unit Tests
 
     public class PyTests
     {
-        private string DirData = @"Assets\Tests\Data~";
+        private string DirData = Application.streamingAssetsPath + "/Data~";
+
+        //--------------------------------------------------------------------------------
+        // config tests
 
         [Test]
         public void CanReadTestData()
@@ -304,7 +358,7 @@ namespace MG.GIF
         {
             var config = new TestConfig( DirData, "255-codes.conf" );
 
-            Assert.AreEqual( 9, config.Config.Count );
+            Assert.AreEqual( 9, config.Count );
 
             Assert.IsTrue( config.Has( "input" ) );
             Assert.IsTrue( config.Has( "loop-count" ) );
@@ -318,93 +372,138 @@ namespace MG.GIF
 
 
         //--------------------------------------------------------------------------------
-        // all tests
+        // pygif tests
 
-        private void ValidateConfig( string file )
+        private void C( string file )
         {
             new TestConfig( DirData, $"{file}.conf" ).Run();
         }
 
-        [Test] public void Test_255_codes()                                 { ValidateConfig( "255-codes" ); }
-        [Test] public void Test_4095_codes_clear()                          { ValidateConfig( "4095-codes-clear" ); }
-        [Test] public void Test_4095_codes()                                { ValidateConfig( "4095-codes" ); }
-        [Test] public void Test_all_blues()                                 { ValidateConfig( "all-blues" ); }
-        [Test] public void Test_all_greens()                                { ValidateConfig( "all-greens" ); }
-        [Test] public void Test_all_reds()                                  { ValidateConfig( "all-reds" ); }
-        [Test] public void Test_animation_multi_image_explicit_zero_delay() { ValidateConfig( "animation-multi-image-explicit-zero-delay" ); }
+        [Test] public void Test_255_codes()                                 { C( "255-codes" ); }
+        [Test] public void Test_4095_codes_clear()                          { C( "4095-codes-clear" ); }
+        [Test] public void Test_4095_codes()                                { C( "4095-codes" ); }
+        [Test] public void Test_all_blues()                                 { C( "all-blues" ); }
+        [Test] public void Test_all_greens()                                { C( "all-greens" ); }
+        [Test] public void Test_all_reds()                                  { C( "all-reds" ); }
+        [Test] public void Test_animation_multi_image_explicit_zero_delay() { C( "animation-multi-image-explicit-zero-delay" ); }
         //[Test] public void Test_animation_multi_image()                     { ValidateConfig( "animation-multi-image" ); }
-        [Test] public void Test_animation_no_delays()                       { ValidateConfig( "animation-no-delays" ); }
-        [Test] public void Test_animation_speed()                           { ValidateConfig( "animation-speed" ); }
-        [Test] public void Test_animation_zero_delays()                     { ValidateConfig( "animation-zero-delays" ); }
-        [Test] public void Test_animation()                                 { ValidateConfig( "animation" ); }
-        [Test] public void Test_comment()                                   { ValidateConfig( "comment" ); }
-        [Test] public void Test_depth1()                                    { ValidateConfig( "depth1" ); }
-        [Test] public void Test_depth2()                                    { ValidateConfig( "depth2" ); }
-        [Test] public void Test_depth3()                                    { ValidateConfig( "depth3" ); }
-        [Test] public void Test_depth4()                                    { ValidateConfig( "depth4" ); }
-        [Test] public void Test_depth5()                                    { ValidateConfig( "depth5" ); }
-        [Test] public void Test_depth6()                                    { ValidateConfig( "depth6" ); }
-        [Test] public void Test_depth7()                                    { ValidateConfig( "depth7" ); }
-        [Test] public void Test_depth8()                                    { ValidateConfig( "depth8" ); }
-        [Test] public void Test_disabled_transparent()                      { ValidateConfig( "disabled-transparent" ); }
-        [Test] public void Test_dispose_keep()                              { ValidateConfig( "dispose-keep" ); }
-        [Test] public void Test_dispose_none()                              { ValidateConfig( "dispose-none" ); }
-        [Test] public void Test_dispose_restore_background()                { ValidateConfig( "dispose-restore-background" ); }
-        [Test] public void Test_dispose_restore_previous()                  { ValidateConfig( "dispose-restore-previous" ); }
-        [Test] public void Test_double_clears()                             { ValidateConfig( "double-clears" ); }
-        [Test] public void Test_extra_data()                                { ValidateConfig( "extra-data" ); }
-        [Test] public void Test_extra_pixels()                              { ValidateConfig( "extra-pixels" ); }
-        [Test] public void Test_four_colors()                               { ValidateConfig( "four-colors" ); }
-        [Test] public void Test_gif87a_animation()                          { ValidateConfig( "gif87a-animation" ); }
-        [Test] public void Test_gif87a()                                    { ValidateConfig( "gif87a" ); }
-        [Test] public void Test_high_color()                                { ValidateConfig( "high-color" ); }
-        [Test] public void Test_icc_color_profile_empty()                   { ValidateConfig( "icc-color-profile-empty" ); }
-        [Test] public void Test_icc_color_profile()                         { ValidateConfig( "icc-color-profile" ); }
-        [Test] public void Test_image_inside_bg()                           { ValidateConfig( "image-inside-bg" ); }
-        [Test] public void Test_image_outside_bg()                          { ValidateConfig( "image-outside-bg" ); }
-        [Test] public void Test_image_overlap_bg()                          { ValidateConfig( "image-overlap-bg" ); }
-        [Test] public void Test_image_zero_height()                         { ValidateConfig( "image-zero-height" ); }
-        [Test] public void Test_image_zero_size()                           { ValidateConfig( "image-zero-size" ); }
-        [Test] public void Test_image_zero_width()                          { ValidateConfig( "image-zero-width" ); }
-        [Test] public void Test_images_combine()                            { ValidateConfig( "images-combine" ); }
-        [Test] public void Test_images_overlap()                            { ValidateConfig( "images-overlap" ); }
-        [Test] public void Test_interlace()                                 { ValidateConfig( "interlace" ); }
-        [Test] public void Test_invalid_ascii_comment()                     { ValidateConfig( "invalid-ascii-comment" ); }
-        [Test] public void Test_invalid_background()                        { ValidateConfig( "invalid-background" ); }
-        [Test] public void Test_invalid_code()                              { ValidateConfig( "invalid-code" ); }
-        [Test] public void Test_invalid_colors()                            { ValidateConfig( "invalid-colors" ); }
-        [Test] public void Test_invalid_transparent()                       { ValidateConfig( "invalid-transparent" ); }
-        [Test] public void Test_invalid_utf8_comment()                      { ValidateConfig( "invalid-utf8-comment" ); }
-        [Test] public void Test_large_codes()                               { ValidateConfig( "large-codes" ); }
-        [Test] public void Test_large_comment()                             { ValidateConfig( "large-comment" ); }
-        [Test] public void Test_local_color_table()                         { ValidateConfig( "local-color-table" ); }
-        [Test] public void Test_loop_animexts()                             { ValidateConfig( "loop-animexts" ); }
-        [Test] public void Test_loop_buffer()                               { ValidateConfig( "loop-buffer" ); }
-        [Test] public void Test_loop_buffer_max()                           { ValidateConfig( "loop-buffer_max" ); }
-        [Test] public void Test_loop_infinite()                             { ValidateConfig( "loop-infinite" ); }
-        [Test] public void Test_loop_max()                                  { ValidateConfig( "loop-max" ); }
-        [Test] public void Test_loop_once()                                 { ValidateConfig( "loop-once" ); }
-        [Test] public void Test_many_clears()                               { ValidateConfig( "many-clears" ); }
-        [Test] public void Test_max_codes()                                 { ValidateConfig( "max-codes" ); }
-        [Test] public void Test_max_height()                                { ValidateConfig( "max-height" ); }
-        [Test] public void Test_max_size()                                  { ValidateConfig( "max-size" ); }
-        [Test] public void Test_max_width()                                 { ValidateConfig( "max-width" ); }
-        [Test] public void Test_missing_pixels()                            { ValidateConfig( "missing-pixels" ); }
-        [Test] public void Test_no_clear_and_eoi()                          { ValidateConfig( "no-clear-and-eoi" ); }
-        [Test] public void Test_no_clear()                                  { ValidateConfig( "no-clear" ); }
-        [Test] public void Test_no_data()                                   { ValidateConfig( "no-data" ); }
-        [Test] public void Test_no_eoi()                                    { ValidateConfig( "no-eoi" ); }
-        [Test] public void Test_no_global_color_table()                     { ValidateConfig( "no-global-color-table" ); }
-        [Test] public void Test_nul_application_extension()                 { ValidateConfig( "nul-application-extension" ); }
-        [Test] public void Test_nul_comment()                               { ValidateConfig( "nul-comment" ); }
-        [Test] public void Test_plain_text()                                { ValidateConfig( "plain-text" ); }
-        [Test] public void Test_transparent()                               { ValidateConfig( "transparent" ); }
-        [Test] public void Test_unknown_application_extension()             { ValidateConfig( "unknown-application-extension" ); }
-        [Test] public void Test_unknown_extension()                         { ValidateConfig( "unknown-extension" ); }
-        [Test] public void Test_xmp_data_empty()                            { ValidateConfig( "xmp-data-empty" ); }
-        [Test] public void Test_xmp_data()                                  { ValidateConfig( "xmp-data" ); }
-        [Test] public void Test_zero_height()                               { ValidateConfig( "zero-height" ); }
-        [Test] public void Test_zero_size()                                 { ValidateConfig( "zero-size" ); }
-        [Test] public void Test_zero_width()                                { ValidateConfig( "zero-width" ); }
+        [Test] public void Test_animation_no_delays()                       { C( "animation-no-delays" ); }
+        [Test] public void Test_animation_speed()                           { C( "animation-speed" ); }
+        [Test] public void Test_animation_zero_delays()                     { C( "animation-zero-delays" ); }
+        [Test] public void Test_animation()                                 { C( "animation" ); }
+        [Test] public void Test_comment()                                   { C( "comment" ); }
+        [Test] public void Test_depth1()                                    { C( "depth1" ); }
+        [Test] public void Test_depth2()                                    { C( "depth2" ); }
+        [Test] public void Test_depth3()                                    { C( "depth3" ); }
+        [Test] public void Test_depth4()                                    { C( "depth4" ); }
+        [Test] public void Test_depth5()                                    { C( "depth5" ); }
+        [Test] public void Test_depth6()                                    { C( "depth6" ); }
+        [Test] public void Test_depth7()                                    { C( "depth7" ); }
+        [Test] public void Test_depth8()                                    { C( "depth8" ); }
+        [Test] public void Test_disabled_transparent()                      { C( "disabled-transparent" ); }
+        [Test] public void Test_dispose_keep()                              { C( "dispose-keep" ); }
+        [Test] public void Test_dispose_none()                              { C( "dispose-none" ); }
+        [Test] public void Test_dispose_restore_background()                { C( "dispose-restore-background" ); }
+        [Test] public void Test_dispose_restore_previous()                  { C( "dispose-restore-previous" ); }
+        [Test] public void Test_double_clears()                             { C( "double-clears" ); }
+        [Test] public void Test_extra_data()                                { C( "extra-data" ); }
+        [Test] public void Test_extra_pixels()                              { C( "extra-pixels" ); }
+        [Test] public void Test_four_colors()                               { C( "four-colors" ); }
+        [Test] public void Test_gif87a_animation()                          { C( "gif87a-animation" ); }
+        [Test] public void Test_gif87a()                                    { C( "gif87a" ); }
+        [Test] public void Test_high_color()                                { C( "high-color" ); }
+        [Test] public void Test_icc_color_profile_empty()                   { C( "icc-color-profile-empty" ); }
+        [Test] public void Test_icc_color_profile()                         { C( "icc-color-profile" ); }
+        [Test] public void Test_image_inside_bg()                           { C( "image-inside-bg" ); }
+        [Test] public void Test_image_outside_bg()                          { C( "image-outside-bg" ); }
+        [Test] public void Test_image_overlap_bg()                          { C( "image-overlap-bg" ); }
+        [Test] public void Test_image_zero_height()                         { C( "image-zero-height" ); }
+        [Test] public void Test_image_zero_size()                           { C( "image-zero-size" ); }
+        [Test] public void Test_image_zero_width()                          { C( "image-zero-width" ); }
+        [Test] public void Test_images_combine()                            { C( "images-combine" ); }
+        [Test] public void Test_images_overlap()                            { C( "images-overlap" ); }
+        [Test] public void Test_interlace()                                 { C( "interlace" ); }
+        [Test] public void Test_invalid_ascii_comment()                     { C( "invalid-ascii-comment" ); }
+        [Test] public void Test_invalid_background()                        { C( "invalid-background" ); }
+        [Test] public void Test_invalid_code()                              { C( "invalid-code" ); }
+        [Test] public void Test_invalid_colors()                            { C( "invalid-colors" ); }
+        [Test] public void Test_invalid_transparent()                       { C( "invalid-transparent" ); }
+        [Test] public void Test_invalid_utf8_comment()                      { C( "invalid-utf8-comment" ); }
+        [Test] public void Test_large_codes()                               { C( "large-codes" ); }
+        [Test] public void Test_large_comment()                             { C( "large-comment" ); }
+        [Test] public void Test_local_color_table()                         { C( "local-color-table" ); }
+        [Test] public void Test_loop_animexts()                             { C( "loop-animexts" ); }
+        [Test] public void Test_loop_buffer()                               { C( "loop-buffer" ); }
+        [Test] public void Test_loop_buffer_max()                           { C( "loop-buffer_max" ); }
+        [Test] public void Test_loop_infinite()                             { C( "loop-infinite" ); }
+        [Test] public void Test_loop_max()                                  { C( "loop-max" ); }
+        [Test] public void Test_loop_once()                                 { C( "loop-once" ); }
+        [Test] public void Test_many_clears()                               { C( "many-clears" ); }
+        [Test] public void Test_max_codes()                                 { C( "max-codes" ); }
+        [Test] public void Test_max_height()                                { C( "max-height" ); }
+        [Test] public void Test_max_size()                                  { C( "max-size" ); }
+        [Test] public void Test_max_width()                                 { C( "max-width" ); }
+        [Test] public void Test_missing_pixels()                            { C( "missing-pixels" ); }
+        [Test] public void Test_no_clear_and_eoi()                          { C( "no-clear-and-eoi" ); }
+        [Test] public void Test_no_clear()                                  { C( "no-clear" ); }
+        [Test] public void Test_no_data()                                   { C( "no-data" ); }
+        [Test] public void Test_no_eoi()                                    { C( "no-eoi" ); }
+        [Test] public void Test_no_global_color_table()                     { C( "no-global-color-table" ); }
+        [Test] public void Test_nul_application_extension()                 { C( "nul-application-extension" ); }
+        [Test] public void Test_nul_comment()                               { C( "nul-comment" ); }
+        [Test] public void Test_plain_text()                                { C( "plain-text" ); }
+        [Test] public void Test_transparent()                               { C( "transparent" ); }
+        [Test] public void Test_unknown_application_extension()             { C( "unknown-application-extension" ); }
+        [Test] public void Test_unknown_extension()                         { C( "unknown-extension" ); }
+        [Test] public void Test_xmp_data_empty()                            { C( "xmp-data-empty" ); }
+        [Test] public void Test_xmp_data()                                  { C( "xmp-data" ); }
+        [Test] public void Test_zero_height()                               { C( "zero-height" ); }
+        [Test] public void Test_zero_size()                                 { C( "zero-size" ); }
+        [Test] public void Test_zero_width()                                { C( "zero-width" ); }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// utility functions
+
+public static class MgGifImageArrayExtension
+{
+    public static int GetNumFrames( this List<MG.GIF.Image> images )
+    {
+        int count = 0;
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public static MG.GIF.Image GetFrame( this List<MG.GIF.Image> images, int index )
+    {
+        if( images.Count == 0 )
+        {
+            return null;
+        }
+
+        foreach( var img in images )
+        {
+            if( img.Delay > 0 )
+            {
+                if( index == 0 )
+                {
+                    return img;
+                }
+
+                index--;
+            }
+        }
+
+        return images[ images.Count - 1 ];
     }
 }

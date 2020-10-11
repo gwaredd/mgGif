@@ -1,23 +1,49 @@
+#define mgGIF_UNSAFE
+
 using UnityEngine;
 using System;
 using System.Runtime.CompilerServices;
+using System.Text;
+
+#if mgGIF_UNSAFE
 using System.Runtime.InteropServices;
+#endif
 
 namespace MG.GIF
 {
-    public class Image
+    ////////////////////////////////////////////////////////////////////////////////
+
+    public class Image : ICloneable
     {
         public int       Width;
         public int       Height;
         public int       Delay; // milliseconds
         public Color32[] RawImage;
 
+        public Image()
+        {
+        }
+
+        public Image( Image img )
+        {
+            Width    = img.Width;
+            Height   = img.Height;
+            Delay    = img.Delay;
+            RawImage = img.RawImage != null ? (Color32[]) img.RawImage.Clone() : null;
+        }
+
+        public object Clone()
+        {
+            return new Image( this );
+        }
+
         public Texture2D CreateTexture()
         {
-            var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false );
-
-            tex.filterMode = FilterMode.Point;
-            tex.wrapMode   = TextureWrapMode.Clamp;
+            var tex = new Texture2D( Width, Height, TextureFormat.ARGB32, false )
+            {
+                filterMode = FilterMode.Point,
+                wrapMode   = TextureWrapMode.Clamp
+            };
 
             tex.SetPixels32( RawImage );
             tex.Apply();
@@ -28,7 +54,10 @@ namespace MG.GIF
 
     ////////////////////////////////////////////////////////////////////////////////
 
-    public class Decoder
+#if mgGIF_UNSAFE
+    unsafe
+#endif
+    public class Decoder : IDisposable
     {
         public string  Version;
         public ushort  Width;
@@ -37,6 +66,7 @@ namespace MG.GIF
 
 
         //------------------------------------------------------------------------------
+        // GIF format enums
 
         [Flags]
         private enum ImageFlag
@@ -70,11 +100,21 @@ namespace MG.GIF
             ReturnToPrevious  = 0x0C
         }
 
+        [Flags]
+        private enum ControlFlags
+        {
+            HasTransparency   = 0x01,
+            DisposalMask      = 0x0C
+        }
+
+
+        //------------------------------------------------------------------------------
+
         const uint          NoCode         = 0xFFFF;
         const ushort        NoTransparency = 0xFFFF;
 
         // input stream to decode
-        byte[]              Data;
+        byte[]              Input;
         int                 D;
 
         // colour table
@@ -83,72 +123,43 @@ namespace MG.GIF
         private Color32[]   ActiveColourTable;
         private ushort      TransparentIndex;
 
-        // current controls
-        private ushort      ControlDelay;
-        private Disposal    ControlDispose;
-
         // current image
+        private Image       Image = new Image();
         private ushort      ImageLeft;
         private ushort      ImageTop;
         private ushort      ImageWidth;
         private ushort      ImageHeight;
 
-        // previous image (to adhere to "dispoal" method)
-        private Color32[]   PrevImage;
+        private Color32[]   Output;
+        private Color32[]   PreviousImage;
 
+        readonly int[]      Pow2 = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
         //------------------------------------------------------------------------------
+        // ctor
 
-        // one shot
-
-        public static Image[] Parse( byte[] data )
+        public Decoder( byte[] data )
+            : this()
         {
-            return new Decoder().Load( data ).GetImages();
+            Load( data );
         }
-
-        // load data
 
         public Decoder Load( byte[] data )
         {
-            Data = data;
-            D = 0;
+            Input             = data;
+            D                 = 0;
 
             GlobalColourTable = new Color32[ 256 ];
             LocalColourTable  = new Color32[ 256 ];
             TransparentIndex  = NoTransparency;
+            Output            = null;
+            PreviousImage     = null;
 
-            ControlDelay      = 0;
-            ControlDispose    = Disposal.None;
-
-            PrevImage         = null;
+            Image.Delay       = 0;
 
             return this;
         }
 
-        // get all images
-
-        public Image[] GetImages()
-        {
-            var count  = 0;
-            var images = new Image[ 64 ];
-
-            var img = NextImage();
-
-            while( img != null )
-            {
-                if( count == images.Length )
-                {
-                    Array.Resize( ref images, count * 2 );
-                }
-
-                images[ count++ ] = img;
-                img = NextImage();
-            }
-
-            Array.Resize( ref images, count );
-
-            return images;
-        }
 
         //------------------------------------------------------------------------------
         // reading data utility functions
@@ -156,49 +167,27 @@ namespace MG.GIF
         [MethodImpl( MethodImplOptions.AggressiveInlining )]
         byte ReadByte()
         {
-            return Data[ D++ ];
+            return Input[ D++ ];
         }
 
         [MethodImpl( MethodImplOptions.AggressiveInlining )]
         ushort ReadUInt16()
         {
-            return (ushort) ( Data[ D++ ] | Data[ D++ ] << 8 );
-        }
-
-        //------------------------------------------------------------------------------
-
-        private Color32[] ReadColourTable( Color32[] colourTable, ImageFlag flags )
-        {
-            var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
-
-            for( var i = 0; i < tableSize; i++ )
-            {
-                colourTable[ i ] = new Color32(
-                    Data[ D++ ],
-                    Data[ D++ ],
-                    Data[ D++ ],
-                    0xFF
-                );
-            }
-
-            return colourTable;
+            return (ushort) ( Input[ D++ ] | Input[ D++ ] << 8 );
         }
 
         //------------------------------------------------------------------------------
 
         protected void ReadHeader()
         {
+            if( Input == null || Input.Length <= 12 )
+            {
+                throw new Exception( "Invalid data" );
+            }
+
             // signature
 
-            Version = new string( new char[] {
-                (char) Data[ 0 ],
-                (char) Data[ 1 ],
-                (char) Data[ 2 ],
-                (char) Data[ 3 ],
-                (char) Data[ 4 ],
-                (char) Data[ 5 ]
-            } );
-
+            Version = Encoding.ASCII.GetString( Input, 0, 6 );
             D = 6;
 
             if( Version != "GIF87a" && Version != "GIF89a" )
@@ -208,13 +197,16 @@ namespace MG.GIF
 
             // read header
 
-            Width = ReadUInt16();
+            Width  = ReadUInt16();
             Height = ReadUInt16();
 
-            var flags   = (ImageFlag) ReadByte();
-            var bgIndex = Data[ D++ ]; // background colour
+            Image.Width  = Width;
+            Image.Height = Height;
 
-            D++; // aspect ratio
+            var flags   = (ImageFlag) ReadByte();
+            var bgIndex = ReadByte(); // background colour
+
+            ReadByte(); // aspect ratio
 
             if( flags.HasFlag( ImageFlag.ColourTable ) )
             {
@@ -232,11 +224,6 @@ namespace MG.GIF
 
             if( D == 0 )
             {
-                if( Data == null || Data.Length <= 12 )
-                {
-                    throw new Exception( "Invalid data" );
-                }
-
                 ReadHeader();
             }
 
@@ -249,7 +236,7 @@ namespace MG.GIF
                 switch( block )
                 {
                     case Block.Image:
-
+                    {
                         // return the image if we got one
 
                         var img = ReadImageBlock();
@@ -258,45 +245,67 @@ namespace MG.GIF
                         {
                             return img;
                         }
-                        break;
+                    }
+                    break;
 
                     case Block.Extension:
-
+                    {
                         var ext = (Extension) ReadByte();
 
-                        switch( ext )
+                        if( ext == Extension.GraphicControl )
                         {
-                            case Extension.GraphicControl:
-                                ReadControlBlock();
-                                break;
-
-                            default:
-                                SkipBlocks();
-                                break;
+                            ReadControlBlock();
                         }
-
-                        break;
+                        else
+                        {
+                            SkipBlocks();
+                        }
+                    }
+                    break;
 
                     case Block.End:
+                    {
                         // end block - stop!
                         return null;
+                    }
 
                     default:
+                    {
                         throw new Exception( "Unexpected block type" );
+                    }
                 }
             }
         }
 
         //------------------------------------------------------------------------------
 
+        private Color32[] ReadColourTable( Color32[] colourTable, ImageFlag flags )
+        {
+            var tableSize = Pow2[ (int)( flags & ImageFlag.TableSizeMask ) + 1 ];
+
+            for( var i = 0; i < tableSize; i++ )
+            {
+                colourTable[ i ] = new Color32(
+                    Input[ D++ ],
+                    Input[ D++ ],
+                    Input[ D++ ],
+                    0xFF
+                );
+            }
+
+            return colourTable;
+        }
+
+        //------------------------------------------------------------------------------
+
         private void SkipBlocks()
         {
-            var blockSize = Data[ D++ ];
+            var blockSize = Input[ D++ ];
 
             while( blockSize != 0x00 )
             {
                 D += blockSize;
-                blockSize = Data[ D++ ];
+                blockSize = Input[ D++ ];
             }
         }
 
@@ -304,18 +313,17 @@ namespace MG.GIF
 
         private void ReadControlBlock()
         {
-            D++; // block size
+            // read block
 
-            var flags = Data[ D++ ];
-
-            ControlDispose = (Disposal) ( flags & 0x1C );
-            ControlDelay   = ReadUInt16();
+            ReadByte();                             // block size (0x04)
+            var flags = (ControlFlags) ReadByte();  // flags
+            Image.Delay = ReadUInt16() * 10;        // delay (1/100th -> milliseconds)
+            var transparentColour = ReadByte();     // transparent colour
+            ReadByte();                             // terminator (0x00)
 
             // has transparent colour?
 
-            var transparentColour = Data[ D++ ];
-
-            if( ( flags & 0x01 ) == 0x01 )
+            if( flags.HasFlag( ControlFlags.HasTransparency ) )
             {
                 TransparentIndex = transparentColour;
             }
@@ -324,7 +332,35 @@ namespace MG.GIF
                 TransparentIndex = NoTransparency;
             }
 
-            D++; // terminator
+            // dispose of current image
+
+            switch( (Disposal)( flags & ControlFlags.DisposalMask ) )
+            {
+                default:
+                case Disposal.None:
+                case Disposal.DoNotDispose:
+                    // remember current image in case we need to "return to previous"
+                    PreviousImage = Output;
+                    break;
+
+                case Disposal.RestoreBackground:
+                    // empty image - don't track
+                    Output = new Color32[ Width * Height ];
+                    break;
+
+                case Disposal.ReturnToPrevious:
+
+                    // return to previous image
+
+                    Output = new Color32[ Width * Height ];
+
+                    if( PreviousImage != null )
+                    {
+                        Array.Copy( PreviousImage, Output, Output.Length );
+                    }
+
+                    break;
+            }
         }
 
         //------------------------------------------------------------------------------
@@ -337,8 +373,7 @@ namespace MG.GIF
             ImageTop    = ReadUInt16();
             ImageWidth  = ReadUInt16();
             ImageHeight = ReadUInt16();
-
-            var flags   = (ImageFlag) Data[ D++ ];
+            var flags   = (ImageFlag) ReadByte();
 
             // bad image if we don't have any dimensions
 
@@ -358,48 +393,43 @@ namespace MG.GIF
                 ActiveColourTable = GlobalColourTable;
             }
 
-            // create image
-
-            var img = new Image()
+            if( Output == null )
             {
-                Width  = Width,
-                Height = Height,
-                Delay  = ControlDelay * 10 // (gif are in 1/100th second) convert to ms
-            };
+                Output = new Color32[ Width * Height ];
+                PreviousImage = Output;
+            }
 
-            // decompress data into raw image
+            // read image data
 
-            img.RawImage = DecompressLZW();
+            DecompressLZW();
 
             // deinterlace
 
             if( flags.HasFlag( ImageFlag.Interlaced ) )
             {
-                img.RawImage = Deinterlace( img.RawImage, ImageWidth );
+                Deinterlace();
             }
 
-            // store raw image data if we might need it for the next image
+            // return image
 
-            if( ControlDispose == Disposal.None || ControlDispose == Disposal.DoNotDispose )
-            {
-                PrevImage = img.RawImage;
-            }
-
-            return img;
+            Image.RawImage = Output;
+            return Image;
         }
 
         //------------------------------------------------------------------------------
         // decode interlaced images
 
-        protected Color32[] Deinterlace( Color32[] input, int width )
+        protected void Deinterlace()
         {
-            var output   = new Color32[ input.Length ];
-            var numRows  = input.Length / width;
-            var writePos = input.Length - width; // NB: work backwards due to Y-coord flip
+            var numRows  = Output.Length / Width;
+            var writePos = Output.Length - Width; // NB: work backwards due to Y-coord flip
+            var input    = Output;
+
+            Output = new Color32[ Output.Length ];
 
             for( var row = 0; row < numRows; row++ )
             {
-                var copyRow = 0;
+                int copyRow;
 
                 // every 8th row starting at 0
                 if( row % 8 == 0 )
@@ -425,49 +455,373 @@ namespace MG.GIF
                     copyRow = o + ( row - 1 ) / 2;
                 }
 
-                Array.Copy( input, ( numRows - copyRow - 1 ) * width, output, writePos, width );
+                Array.Copy( input, ( numRows - copyRow - 1 ) * Width, Output, writePos, Width );
 
-                writePos -= width;
+                writePos -= Width;
             }
-
-            return output;
         }
 
         //------------------------------------------------------------------------------
         // DecompressLZW()
-        //  optimised for performance using pre-allocated buffers to cut down on
-        //  allocation overhead
 
-        int[]    Pow2      = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
-        int[]    codeIndex = new int[ 4098 ];             // codes can be upto 12 bytes long, this is the maximum number of possible codes (2^12 + 2 for clear and end code)
-        ushort[] codes     = new ushort[ 128 * 1024 ];    // 128k buffer for codes - should be plenty but we dynamically resize if required
+#if mgGIF_UNSAFE
 
-        private Color32[] DecompressLZW()
+        bool        Disposed = false;
+
+        int         CodesLength;
+        IntPtr      CodesHandle;
+        ushort*     pCodes;
+
+        IntPtr      CurBlock;
+        uint*       pCurBlock;
+
+        const int   MaxCodes = 4096;
+        IntPtr      Indices;
+        ushort**    pIndicies;
+
+        public Decoder()
+        {
+            // unmanaged allocations
+
+            CodesLength = 128 * 1024;
+            CodesHandle = Marshal.AllocHGlobal( CodesLength * sizeof( ushort ) );
+            pCodes      = (ushort*) CodesHandle.ToPointer();
+
+            CurBlock    = Marshal.AllocHGlobal( 64 * sizeof( uint ) );
+            pCurBlock   = (uint*) CurBlock.ToPointer();
+
+            Indices     = Marshal.AllocHGlobal( MaxCodes * sizeof( ushort* ) );
+            pIndicies   = (ushort**) Indices.ToPointer();
+        }
+
+        protected virtual void Dispose( bool disposing )
+        {
+            if( Disposed )
+            {
+                return;
+            }
+
+            // release unmanaged resources
+
+            Marshal.FreeHGlobal( CodesHandle );
+            Marshal.FreeHGlobal( CurBlock );
+            Marshal.FreeHGlobal( Indices );
+            
+            Disposed = true;
+        }
+
+        ~Decoder()
+        {
+            Dispose( false );
+        }
+
+        public void Dispose()
+        {
+            Dispose( true );
+            GC.SuppressFinalize( this );
+        }
+
+        private void DecompressLZW()
+        {
+            var pCodeBufferEnd = pCodes + CodesLength;
+
+            fixed( byte* pData = Input )
+            {
+                fixed( Color32* pOutput = Output, pColourTable = ActiveColourTable )
+                {
+                    var row       = ( Height - ImageTop - 1 ) * Width; // start at end of array as we are reversing the row order
+                    var safeWidth = ImageLeft + ImageWidth > Width ? Width - ImageLeft : ImageWidth;
+
+                    var pWrite    = &pOutput[ row + ImageLeft ];
+                    var pRow      = pWrite;
+                    var pRowEnd   = pWrite + ImageWidth;
+                    var pImageEnd = pWrite + safeWidth;
+
+                    // setup codes
+
+                    int minimumCodeSize = Input[ D++ ];
+
+                    if( minimumCodeSize > 11 )
+                    {
+                        minimumCodeSize = 11;
+                    }
+
+                    var codeSize        = minimumCodeSize + 1;
+                    var nextSize        = Pow2[ codeSize ];
+                    var maximumCodeSize = Pow2[ minimumCodeSize ];
+                    var clearCode       = maximumCodeSize;
+                    var endCode         = maximumCodeSize + 1;
+
+                    // initialise buffers
+
+                    var numCodes  = maximumCodeSize + 2;
+                    var pCodesEnd = pCodes;
+
+                    for( ushort i = 0; i < numCodes; i++ )
+                    {
+                        pIndicies[ i ] = pCodesEnd;
+                        *pCodesEnd++ = 1;
+                        *pCodesEnd++ = i;
+                    }
+
+                    // LZW decode loop
+
+                    uint previousCode   = NoCode;   // last code processed
+                    uint mask           = (uint) ( nextSize - 1 ); // mask out code bits
+                    uint shiftRegister  = 0;        // shift register holds the bytes coming in from the input stream, we shift down by the number of bits
+
+                    int  bitsAvailable  = 0;        // number of bits available to read in the shift register
+                    int  bytesAvailable = 0;        // number of bytes left in current block
+
+                    uint* pD = pCurBlock;           // pointer to next bits in current block
+
+                    while( true )
+                    {
+                        // get next code
+
+                        uint curCode = shiftRegister & mask;
+
+                        // did we read enough bits?
+
+                        if( bitsAvailable >= codeSize )
+                        {
+                            // we had enough bits in the shift register so shunt it down
+                            bitsAvailable -= codeSize;
+                            shiftRegister >>= codeSize;
+                        }
+                        else
+                        {
+                            // not enough bits in register, so get more
+
+                            // if start of new block
+
+                            if( bytesAvailable <= 0 )
+                            {
+                                // read blocksize
+
+                                var pBlock = &pData[ D++ ];
+                                bytesAvailable = *pBlock++;
+                                D += bytesAvailable;
+
+                                // exit if end of stream
+
+                                if( bytesAvailable == 0 )
+                                {
+                                    return;
+                                }
+
+                                // copy block into buffer
+
+                                pCurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
+                                Buffer.MemoryCopy( pBlock, pCurBlock, 256, bytesAvailable );
+
+                                // reset data pointer
+                                pD = pCurBlock;
+                            }
+
+                            // load shift register from data pointer
+
+                            shiftRegister = *pD++;
+                            int newBits = bytesAvailable >= 4 ? 32 : bytesAvailable * 8;
+                            bytesAvailable -= 4;
+
+                            // read remaining bits
+
+                            if( bitsAvailable > 0 )
+                            {
+                                var bitsRemaining = codeSize - bitsAvailable;
+                                curCode |= ( shiftRegister << bitsAvailable ) & mask;
+                                shiftRegister >>= bitsRemaining;
+                                bitsAvailable = newBits - bitsRemaining;
+                            }
+                            else
+                            {
+                                curCode = shiftRegister & mask;
+                                shiftRegister >>= codeSize;
+                                bitsAvailable = newBits - codeSize;
+                            }
+                        }
+
+                        // process code
+
+                        if( curCode == clearCode )
+                        {
+                            // reset codes
+                            codeSize = minimumCodeSize + 1;
+                            nextSize = Pow2[ codeSize ];
+                            numCodes = maximumCodeSize + 2;
+
+                            // reset buffer write pos
+                            pCodesEnd = &pCodes[ numCodes * 2 ];
+
+                            // clear previous code
+                            previousCode = NoCode;
+                            mask = (uint)( nextSize - 1 );
+
+                            continue;
+                        }
+                        else if( curCode == endCode )
+                        {
+                            // stop
+                            break;
+                        }
+
+                        bool plusOne = false;
+                        ushort* pCodePos = null;
+
+                        if( curCode < numCodes )
+                        {
+                            // write existing code
+                            pCodePos = pIndicies[ curCode ];
+                        }
+                        else if( previousCode != NoCode )
+                        {
+                            // write previous code
+                            pCodePos = pIndicies[ previousCode ];
+                            plusOne = true;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+
+
+                        // output colours
+
+                        var codeLength = *pCodePos++;
+                        var newCode    = *pCodePos;
+                        var pEnd       = pCodePos + codeLength;
+
+                        do
+                        {
+                            var code = *pCodePos++;
+
+                            if( code != TransparentIndex && pWrite < pImageEnd )
+                            {
+                                *pWrite = pColourTable[ code ];
+                            }
+
+                            if( ++pWrite == pRowEnd )
+                            {
+                                pRow -= Width;
+                                pWrite    = pRow;
+                                pRowEnd   = pRow + ImageWidth;
+                                pImageEnd = pRow + safeWidth;
+
+                                if( pWrite < pOutput )
+                                {
+                                    SkipBlocks();
+                                    return;
+                                }
+                            }
+                        }
+                        while( pCodePos < pEnd );
+
+                        if( plusOne )
+                        {
+                            if( newCode != TransparentIndex && pWrite < pImageEnd )
+                            {
+                                *pWrite = pColourTable[ newCode ];
+                            }
+
+                            if( ++pWrite == pRowEnd )
+                            {
+                                pRow -= Width;
+                                pWrite    = pRow;
+                                pRowEnd   = pRow + ImageWidth;
+                                pImageEnd = pRow + safeWidth;
+
+                                if( pWrite < pOutput )
+                                {
+                                    break;
+                                }
+                            }
+                        }
+
+                        // create new code
+
+                        if( previousCode != NoCode && numCodes != MaxCodes )
+                        {
+                            // get previous code from buffer
+
+                            pCodePos = pIndicies[ previousCode ];
+                            codeLength = *pCodePos++;
+
+                            // resize buffer if required (should be rare)
+
+                            if( pCodesEnd + codeLength + 1 >= pCodeBufferEnd )
+                            {
+                                var pBase = pCodes;
+
+                                // realloc buffer
+                                CodesLength *= 2;
+                                CodesHandle = Marshal.ReAllocHGlobal( CodesHandle, (IntPtr)( CodesLength * sizeof( ushort ) ) );
+
+                                pCodes         = (ushort*) CodesHandle.ToPointer();
+                                pCodeBufferEnd = pCodes + CodesLength;
+
+                                // rebase pointers
+
+                                pCodesEnd = pCodes + ( pCodesEnd - pBase );
+
+                                for( int i=0; i < numCodes; i++ )
+                                {
+                                    pIndicies[ i ] = pCodes + ( pIndicies[ i ] - pBase );
+                                }
+
+                                pCodePos = pIndicies[ previousCode ];
+                                pCodePos++;
+                            }
+
+                            // add new code
+
+                            pIndicies[ numCodes++ ] = pCodesEnd;
+                            *pCodesEnd++ = (ushort)( codeLength + 1 );
+
+                            // copy previous code sequence
+
+                            Buffer.MemoryCopy( pCodePos, pCodesEnd, codeLength * sizeof( ushort ), codeLength * sizeof( ushort ) );
+                            pCodesEnd += codeLength;
+
+                            // append new code
+
+                            *pCodesEnd++ = newCode;
+                        }
+
+                        // increase code size?
+
+                        if( numCodes >= nextSize && codeSize < 12 )
+                        {
+                            nextSize = Pow2[ ++codeSize ];
+                            mask     = (uint)( nextSize - 1 );
+                        }
+
+                        // remember last code processed
+                        previousCode = curCode;
+                    }
+
+                    // consume any remaining blocks
+                    SkipBlocks();
+                }
+            }
+        }
+
+#else
+
+        // dispose isn't needed for the safe implementation but keep here for interface parity
+
+        public Decoder() { }
+        public void Dispose() { Dispose( true ); }
+        protected virtual void Dispose( bool disposing ) { }
+
+
+        int[]    Indices  = new int[ 4096 ];
+        ushort[] Codes    = new ushort[ 128 * 1024 ];
+        uint[]   CurBlock = new uint[ 64 ];
+
+        private void DecompressLZW()
         {
             // output write position
-
-            var output = new Color32[ Width * Height ];
-
-            if( ControlDispose != Disposal.RestoreBackground && PrevImage != null )
-            {
-                /**
-                unsafe
-                {
-                    fixed( Color32* pSrc = PrevImage )
-                    {
-                        fixed ( Color32* pDst = output )
-                        {
-                            int lengthOfColor32 = Marshal.SizeOf( typeof(Color32) );
-                            int size = lengthOfColor32 * output.Length;
-
-                            Buffer.MemoryCopy( pSrc, pDst, size, size );
-                        }
-                    }
-                }
-                /*/
-                Array.Copy( PrevImage, output, PrevImage.Length );
-                /**/
-            }
 
             int row       = ( Height - ImageTop - 1 ) * Width; // reverse rows for unity texture coords
             int col       = ImageLeft;
@@ -475,7 +829,7 @@ namespace MG.GIF
 
             // setup codes
 
-            int minimumCodeSize = Data[ D++ ];
+            int minimumCodeSize = Input[ D++ ];
 
             if( minimumCodeSize > 11 )
             {
@@ -495,9 +849,9 @@ namespace MG.GIF
 
             for( ushort i = 0; i < numCodes; i++ )
             {
-                codeIndex[ i ] = codesEnd;
-                codes[ codesEnd++ ] = 1; // length
-                codes[ codesEnd++ ] = i; // code
+                Indices[ i ] = codesEnd;
+                Codes[ codesEnd++ ] = 1; // length
+                Codes[ codesEnd++ ] = i; // code
             }
 
             // LZW decode loop
@@ -508,6 +862,8 @@ namespace MG.GIF
 
             int  bitsAvailable  = 0; // number of bits available to read in the shift register
             int  bytesAvailable = 0; // number of bytes left in current block
+
+            int  blockPos       = 0;
 
             while( true )
             {
@@ -524,45 +880,34 @@ namespace MG.GIF
                 {
                     // reload shift register
 
+
                     // if start of new block
-                    if( bytesAvailable == 0 )
+
+                    if( bytesAvailable <= 0 )
                     {
                         // read blocksize
-                        bytesAvailable = Data[ D++ ];
+                        bytesAvailable = Input[ D++ ];
 
                         // exit if end of stream
                         if( bytesAvailable == 0 )
                         {
-                            return output;
+                            return;
                         }
+
+                        // read block
+                        CurBlock[ ( bytesAvailable - 1 ) / 4 ] = 0; // zero last entry
+                        Buffer.BlockCopy( Input, D, CurBlock, 0, bytesAvailable );
+                        blockPos = 0;
+                        D += bytesAvailable;
                     }
 
+                    // load shift register
 
-                    int newBits = 32;
+                    shiftRegister = CurBlock[ blockPos++ ];
+                    int newBits = bytesAvailable >= 4 ? 32 : bytesAvailable * 8;
+                    bytesAvailable -= 4;
 
-                    if( bytesAvailable >= 4 )
-                    {
-                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 | Data[ D++ ] << 24 );
-                        bytesAvailable -= 4;
-                    }
-                    else if( bytesAvailable == 3 )
-                    {
-                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 | Data[ D++ ] << 16 );
-                        bytesAvailable = 0;
-                        newBits = 24;
-                    }
-                    else if( bytesAvailable == 2 )
-                    {
-                        shiftRegister = (uint) ( Data[ D++ ] | Data[ D++ ] << 8 );
-                        bytesAvailable = 0;
-                        newBits = 16;
-                    }
-                    else
-                    {
-                        shiftRegister = Data[ D++ ];
-                        bytesAvailable = 0;
-                        newBits = 8;
-                    }
+                    // read remaining bits
 
                     if( bitsAvailable > 0 )
                     {
@@ -580,9 +925,6 @@ namespace MG.GIF
                 }
 
                 // process code
-
-                bool plusOne = false;
-                int  codePos = 0;
 
                 if( curCode == clearCode )
                 {
@@ -605,15 +947,19 @@ namespace MG.GIF
                     // stop
                     break;
                 }
-                else if( curCode < numCodes )
+
+                bool plusOne = false;
+                int  codePos = 0;
+
+                if( curCode < numCodes )
                 {
                     // write existing code
-                    codePos = codeIndex[ curCode ];
+                    codePos = Indices[ curCode ];
                 }
                 else if( previousCode != NoCode )
                 {
                     // write previous code
-                    codePos = codeIndex[ previousCode ];
+                    codePos = Indices[ previousCode ];
                     plusOne = true;
                 }
                 else
@@ -624,16 +970,16 @@ namespace MG.GIF
 
                 // output colours
 
-                var codeLength = codes[ codePos++ ];
-                var newCode    = codes[ codePos ];
+                var codeLength = Codes[ codePos++ ];
+                var newCode    = Codes[ codePos ];
 
                 for( int i = 0; i < codeLength; i++ )
                 {
-                    var code = codes[ codePos++ ];
+                    var code = Codes[ codePos++ ];
 
                     if( code != TransparentIndex && col < Width )
                     {
-                        output[ row + col ] = ActiveColourTable[ code ];
+                        Output[ row + col ] = ActiveColourTable[ code ];
                     }
 
                     if( ++col == rightEdge )
@@ -643,7 +989,8 @@ namespace MG.GIF
 
                         if( row < 0 )
                         {
-                            goto Exit;
+                            SkipBlocks();
+                            return;
                         }
                     }
                 }
@@ -652,7 +999,7 @@ namespace MG.GIF
                 {
                     if( newCode != TransparentIndex && col < Width )
                     {
-                        output[ row + col ] = ActiveColourTable[ newCode ];
+                        Output[ row + col ] = ActiveColourTable[ newCode ];
                     }
 
                     if( ++col == rightEdge )
@@ -662,77 +1009,44 @@ namespace MG.GIF
 
                         if( row < 0 )
                         {
-                            goto Exit;
+                            break;
                         }
                     }
                 }
 
                 // create new code
 
-                if( previousCode != NoCode && numCodes != codeIndex.Length )
+                if( previousCode != NoCode && numCodes != Indices.Length )
                 {
                     // get previous code from buffer
 
-                    codePos = codeIndex[ previousCode ];
-                    codeLength = codes[ codePos++ ];
+                    codePos = Indices[ previousCode ];
+                    codeLength = Codes[ codePos++ ];
 
                     // resize buffer if required (should be rare)
 
-                    if( codesEnd + codeLength + 1 >= codes.Length )
+                    if( codesEnd + codeLength + 1 >= Codes.Length )
                     {
-                        Array.Resize( ref codes, codes.Length * 2 );
+                        Array.Resize( ref Codes, Codes.Length * 2 );
                     }
 
                     // add new code
 
-                    codeIndex[ numCodes++ ] = codesEnd;
-                    codes[ codesEnd++ ] = (ushort) ( codeLength + 1 );
+                    Indices[ numCodes++ ] = codesEnd;
+                    Codes[ codesEnd++ ] = (ushort) ( codeLength + 1 );
 
                     // copy previous code sequence
 
-                    /**
-                    unsafe
+                    var stop = codesEnd + codeLength;
+
+                    while( codesEnd < stop )
                     {
-                        fixed ( ushort* pCodes = codes )
-                        {
-                            ushort* pw = &pCodes[ codesEnd ];
-                            ushort* pr = &pCodes[ codePos ];
-
-                            codesEnd += codeLength;
-                            ushort* ps = &pCodes[ codesEnd ];
-
-                            while( pw != ps )
-                            {
-                                *pw++ = *pr++;
-                            }
-                        }
+                        Codes[ codesEnd++ ] = Codes[ codePos++ ];
                     }
-                    /*/
-                    //if( codeLength < 12 )
-                    {
-                        var stop = codesEnd + codeLength;
-
-                        while( codesEnd < stop )
-                        {
-                            codes[ codesEnd++ ] = codes[ codePos++ ];
-                        }
-                    }
-                    //else
-                    //{
-                    //    //for( int i = 0; i < codeLength; i++ )
-                    //    //{
-                    //    //    codes[ codesEnd++ ] = codes[ codePos++ ];
-                    //    //}
-
-                    //    var stop = codesEnd + codeLength;
-                    //    Buffer.BlockCopy( codes, codePos, codes, codesEnd, codeLength );
-                    //    codesEnd += codeLength;
-                    //}
-                    /**/
 
                     // append new code
 
-                    codes[ codesEnd++ ] = newCode;
+                    Codes[ codesEnd++ ] = newCode;
                 }
 
                 // increase code size?
@@ -747,59 +1061,10 @@ namespace MG.GIF
                 previousCode = curCode;
             }
 
-        Exit:
-
-            // skip any remaining bytes
-            D += bytesAvailable;
-
-            // consume any remaining blocks
+            // skip any remaining blocks
             SkipBlocks();
-
-            return output;
         }
+#endif // mgGIF_UNSAFE
     }
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
-
-public static class mgGifImageArrayExtension
-{
-    public static int GetNumFrames( this MG.GIF.Image[] array )
-    {
-        int count = 0;
-
-        foreach( var img in array )
-        {
-            if( img.Delay > 0 )
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    public static MG.GIF.Image GetFrame( this MG.GIF.Image[] array, int index )
-    {
-        if( array.Length == 0 )
-        {
-            return null;
-        }
-
-        foreach( var img in array )
-        {
-            if( img.Delay > 0 )
-            {
-                if( index == 0 )
-                {
-                    return img;
-                }
-
-                index--;
-            }
-        }
-
-        return array[ array.Length - 1 ];
-    }
-}

@@ -1,20 +1,16 @@
 {
-    "name": "Tests",
+    "name": "Scenes",
     "references": [
-        "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner",
-        "MG.GIF"
+        "GUID:8c7a143af4c05044aa341fdaafef731f",
+        "GUID:30f5b8526575d6c489977c3fb055b3a4"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": [
-        "nunit.framework.dll"
-    ],
+    "precompiledReferences": [],
     "autoReferenced": false,
-    "defineConstraints": [
-    ],
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }

@@ -28,12 +28,14 @@ using( var decoder = new MG.GIF.Decoder( data ) )
     while( img != null )
     {
         Texture2D tex = img.CreateTexture();
+        int delay = img.Delay;
+        
         img = decoder.NextImage();
     }
 }
 ```
 
-See [Assets\Scenes\AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/master/Assets/Scenes/AnimatedTextures.cs) for an example
+See [AnimatedTextures.cs](https://github.com/gwaredd/mgGif/blob/main/Assets/Scenes/Scripts/AnimatedTextures.cs) for an example
 
 **NB:** For speed the decoder will reuse the buffer memory between each `NextImage()` call. If you need to keep the raw image data then ensure you `Clone()` it first.
 

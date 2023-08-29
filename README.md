@@ -52,4 +52,4 @@ Benchmarks of the time to decode three test animations using different libraries
 | mgGif                 | 247  ms   | 112  ms  | 80   ms    |
 | mgGif (Unsafe Mode)   | 280  ms   | 106  ms  | 70   ms    |
 
-[2020-10-11] mgGIF is the fastest pure C# GIF decoder for Unity on github
+
